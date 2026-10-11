@@ -1,3 +1,6 @@
+import { cache } from "react";
+
+import { parsePhone, type Contacts, type Phone } from "@/lib/contacts";
 import { prisma } from "@/lib/db";
 
 // Admin-editable settings (the Setting table), each with its default.
@@ -11,6 +14,10 @@ const DEFAULTS = {
   /** Slicer infill levels (%) customers pick from, and the one preselected. */
   "order.infillLevels": "15,25,50,100",
   "order.defaultInfill": "25",
+  /** Contacts shown on the site (lib/contacts.ts): phone numbers one per line, and VK links. */
+  "contacts.phones": "",
+  "contacts.vkGroup": "",
+  "contacts.vkChat": "",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -48,3 +55,24 @@ export async function getMinStockGrams(): Promise<number> {
   const n = Number(await getSetting("bambuddy.minStockGrams"));
   return Number.isFinite(n) && n >= 0 ? n : Number(DEFAULTS["bambuddy.minStockGrams"]);
 }
+
+/**
+ * Phone numbers and VK links shown on the site; unparsable phone lines are dropped.
+ * Read by the header and the footer of every page, so it is loaded once per request and a
+ * database failure only hides the contacts instead of breaking the whole layout.
+ */
+export const getContacts = cache(async (): Promise<Contacts> => {
+  const values = await getSettings(["contacts.phones", "contacts.vkGroup", "contacts.vkChat"]).catch((error) => {
+    console.error("Could not load contacts", error);
+    return null;
+  });
+  if (!values) return { phones: [], vkGroup: "", vkChat: "" };
+  return {
+    phones: values["contacts.phones"]
+      .split("\n")
+      .map(parsePhone)
+      .filter((p): p is Phone => p !== null),
+    vkGroup: values["contacts.vkGroup"],
+    vkChat: values["contacts.vkChat"],
+  };
+});

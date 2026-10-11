@@ -34,6 +34,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <Link href="/admin/printers" className="text-muted transition-colors hover:text-accent">
           {t.printersTitle}
         </Link>
+        <Link href="/admin/contacts" className="text-muted transition-colors hover:text-accent">
+          {t.contactsTitle}
+        </Link>
         <a
           href={getCrmUrl()}
           className="ml-auto rounded-lg border border-border px-3 py-1 text-text transition-colors hover:border-accent hover:text-accent"

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import {
   getViewportSize,
+  HERO_BAND_CSS_BOX,
   HERO_BAND_HEIGHT_VH,
   HERO_BAND_TOP_VH,
   HERO_PARALLAX_FACTOR,
@@ -87,10 +88,7 @@ export function PageBand() {
         ref={bandRef}
         className="absolute"
         style={{
-          left: "-20%",
-          width: "140%",
-          top: `${HERO_BAND_TOP_VH * 100}vh`,
-          height: `${HERO_BAND_HEIGHT_VH * 100}vh`,
+          ...HERO_BAND_CSS_BOX,
           transform: `rotate(${HERO_ROTATE_DEG}deg)`,
           borderTop: "1px solid rgba(127, 191, 127, 0.4)",
           borderBottom: "1px solid rgba(127, 191, 127, 0.4)",

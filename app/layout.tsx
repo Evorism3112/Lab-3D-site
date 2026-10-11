@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Suspense } from "react";
 
+import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Providers } from "@/components/Providers";
 import { YANDEX_METRIKA_ID, YandexMetrika } from "@/components/YandexMetrika";
@@ -33,6 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <Header />
           <main className="flex-1">{children}</main>
+          <Footer />
         </Providers>
         {/* useSearchParams needs a Suspense boundary, or every page would render client-side only. */}
         <Suspense fallback={null}>

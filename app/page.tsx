@@ -1,58 +1,36 @@
 import Link from "next/link";
 
+import { MaterialCard } from "@/components/MaterialCard";
 import { PageBand } from "@/components/PageBand";
 import { Reveal } from "@/components/Reveal";
 import { ScrollParallax } from "@/components/ScrollParallax";
 import { StatCounter } from "@/components/StatCounter";
 import { TextMask } from "@/components/TextMask";
 import { TiltFrame } from "@/components/TiltFrame";
-import { availableCatalog } from "@/lib/colorSync";
+import { listCatalogMaterials } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
-import { localizeCatalogText } from "@/lib/i18n/catalog";
 import { getServerLocale } from "@/lib/i18n/locale";
-import { daysWord, formatDays, formatTemplate, getDictionary } from "@/lib/i18n/translations";
-import { formatAmount } from "@/lib/money";
-import { resolvePricing } from "@/lib/pricing/defaults";
-import { COLOR_ORDER } from "@/lib/types";
+import { daysWord, formatTemplate, getDictionary } from "@/lib/i18n/translations";
 
-function StatBar({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted">{label}</span>
-      <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
-        <div className="h-full rounded-full bg-accent" style={{ width: `${value}%` }} />
-      </div>
-    </div>
-  );
-}
+// The home page shows only the first row of the catalog; the rest is on /materials.
+const HOME_MATERIALS = 3;
 
 export default async function HomePage() {
   const dict = getDictionary(await getServerLocale());
   const { home } = dict;
 
   // Only what can be ordered right now (lib/colorSync.ts) — no out-of-stock plastics.
-  const available = await availableCatalog();
-  const [materialsCount, ordersCount, fastestMaterial, materials, showcaseItems] =
-    await Promise.all([
-      prisma.material.count({ where: available.materials }),
-      prisma.order.count({ where: { status: { not: "DRAFT" } } }),
-      prisma.material.findFirst({
-        where: available.materials,
-        orderBy: { leadTimeDays: "asc" },
-        select: { leadTimeDays: true },
-      }),
-      prisma.material.findMany({
-        where: available.materials,
-        include: { colors: { where: available.colors, orderBy: COLOR_ORDER } },
-      }),
-      prisma.showcaseItem.findMany({
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        take: 3,
-        select: { id: true, title: true },
-      }),
-    ]);
-  // Cheapest per hour first (rates may be unset in the DB, so sort on the resolved value).
-  materials.sort((a, b) => resolvePricing(a).hourlyRateCents - resolvePricing(b).hourlyRateCents);
+  const [materials, ordersCount, showcaseItems] = await Promise.all([
+    listCatalogMaterials(),
+    prisma.order.count({ where: { status: { not: "DRAFT" } } }),
+    prisma.showcaseItem.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      take: 3,
+      select: { id: true, title: true },
+    }),
+  ]);
+  const materialsCount = materials.length;
+  const fastestLeadTime = materials.length > 0 ? Math.min(...materials.map((m) => m.leadTimeDays)) : 2;
   const showcaseSlots = [...showcaseItems, ...Array(Math.max(0, 3 - showcaseItems.length)).fill(null)];
 
   return (
@@ -89,9 +67,12 @@ export default async function HomePage() {
 
             <Reveal delayMs={100}>
               <div>
-                <span className="text-xs font-medium uppercase tracking-[0.15em] text-white/60">
-                  {home.showcaseLabel}
-                </span>
+                <Link
+                  href="/works"
+                  className="text-xs font-medium uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-white"
+                >
+                  {home.showcaseLabel} →
+                </Link>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   {showcaseSlots.map((item, i) =>
                     item ? (
@@ -171,11 +152,9 @@ export default async function HomePage() {
               </Reveal>
               <Reveal delayMs={200}>
                 <div className="card flex flex-col gap-1 p-6">
-                  <strong className="text-[30px] text-accent">
-                    {fastestMaterial?.leadTimeDays ?? 2}
-                  </strong>
+                  <strong className="text-[30px] text-accent">{fastestLeadTime}</strong>
                   <span className="text-sm text-muted">
-                    {home.statsTurnaroundLabel} ({daysWord(fastestMaterial?.leadTimeDays ?? 2, dict.locale)})
+                    {home.statsTurnaroundLabel} ({daysWord(fastestLeadTime, dict.locale)})
                   </span>
                 </div>
               </Reveal>
@@ -196,62 +175,20 @@ export default async function HomePage() {
             </Reveal>
 
             <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {materials.map((m, i) => (
+              {materials.slice(0, HOME_MATERIALS).map((m, i) => (
                 <Reveal key={m.id} delayMs={(i % 3) * 80}>
-                  <div className="card flex h-full flex-col gap-4 p-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-accent">{m.name}</h3>
-                      {m.description && (
-                        <p className="mt-1 text-sm text-muted">
-                          {localizeCatalogText(m.description, dict.locale)}
-                        </p>
-                      )}
-                    </div>
-
-                    {m.colors.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {m.colors.map((c) => (
-                          <span
-                            key={c.id}
-                            title={
-                              localizeCatalogText(c.name, dict.locale, c.nameRu) + (c.variant ? ` · ${c.variant}` : "")
-                            }
-                            className="h-4 w-4 rounded-full border border-border"
-                            style={{ background: c.hex }}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex flex-col gap-2">
-                      <StatBar label={home.materialsStrength} value={m.strength} />
-                      <StatBar label={home.materialsFlexibility} value={m.flexibility} />
-                      <StatBar label={home.materialsHeatResistance} value={m.heatResistance} />
-                    </div>
-
-                    {m.bestFor && (
-                      <p className="rounded-lg border border-border bg-white/[0.03] px-3 py-2 text-[13px] leading-relaxed text-text">
-                        <span className="text-muted">{home.materialsBestFor}</span>{" "}
-                        {localizeCatalogText(m.bestFor, dict.locale)}
-                      </p>
-                    )}
-
-                    <div className="mt-auto flex items-baseline justify-between border-t border-border pt-3 text-sm">
-                      <span className="text-muted">
-                        {home.materialsPricePrefix}{" "}
-                        <span className="font-semibold text-text">
-                          {formatAmount(resolvePricing(m).hourlyRateCents / 100, dict.locale)}
-                        </span>{" "}
-                        {home.materialsPriceSuffix}
-                      </span>
-                      <span className="text-muted">
-                        {formatTemplate(home.materialsLeadTime, formatDays(m.leadTimeDays, dict.locale))}
-                      </span>
-                    </div>
-                  </div>
+                  <MaterialCard material={m} dict={dict} />
                 </Reveal>
               ))}
             </div>
+
+            {materials.length > HOME_MATERIALS && (
+              <div className="mt-10 flex justify-center">
+                <Link href="/materials" className="btn btn-outline">
+                  {home.materialsAll} →
+                </Link>
+              </div>
+            )}
           </div>
         </section>
 

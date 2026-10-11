@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
+import { MAX_PHONES, normalizeVkUrl, parsePhone } from "@/lib/contacts";
 import { setSetting } from "@/lib/settings";
 
 const SettingsSchema = z
@@ -9,6 +10,13 @@ const SettingsSchema = z
     minStockGrams: z.number().int().min(0).max(100_000).optional(),
     infillLevels: z.array(z.number().int().min(1).max(100)).min(1).max(10).optional(),
     defaultInfill: z.number().int().min(1).max(100).optional(),
+    contacts: z
+      .object({
+        phones: z.array(z.string().max(40)).max(MAX_PHONES),
+        vkGroup: z.string().max(200),
+        vkChat: z.string().max(200),
+      })
+      .optional(),
   })
   // The default must be one of the levels offered to customers.
   .refine((v) => v.defaultInfill === undefined || !v.infillLevels || v.infillLevels.includes(v.defaultInfill));
@@ -33,6 +41,17 @@ export async function PATCH(request: NextRequest) {
   }
   if (parsed.data.defaultInfill !== undefined) {
     await setSetting("order.defaultInfill", String(parsed.data.defaultInfill));
+  }
+  if (parsed.data.contacts !== undefined) {
+    const phones = parsed.data.contacts.phones.map((p) => p.trim()).filter(Boolean);
+    const vkGroup = normalizeVkUrl(parsed.data.contacts.vkGroup);
+    const vkChat = normalizeVkUrl(parsed.data.contacts.vkChat);
+    if (vkGroup === null || vkChat === null || phones.some((p) => !parsePhone(p))) {
+      return NextResponse.json({ error: "Invalid values" }, { status: 400 });
+    }
+    await setSetting("contacts.phones", phones.join("\n"));
+    await setSetting("contacts.vkGroup", vkGroup);
+    await setSetting("contacts.vkChat", vkChat);
   }
   return NextResponse.json({ ok: true });
 }

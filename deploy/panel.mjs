@@ -118,7 +118,8 @@ function bambuddyState() {
   return new Promise((resolve) => {
     execFile("sc.exe", ["query", "Bambuddy"], { windowsHide: true }, (err, stdout) => {
       if (err && !stdout) return resolve({ state: "not-installed" });
-      const m = String(stdout).match(/STATE\s*:\s*\d+\s+(\w+)/);
+      // The field label is localized ("STATE" / "Состояние"), the state name after it is not.
+      const m = String(stdout).match(/:\s*\d+\s+(RUNNING|STOPPED|START_PENDING|STOP_PENDING|PAUSED|PAUSE_PENDING|CONTINUE_PENDING)\b/);
       if (!m) return resolve({ state: "not-installed" });
       const map = { RUNNING: "running", STOPPED: "stopped", START_PENDING: "starting", STOP_PENDING: "stopping" };
       resolve({ state: map[m[1]] || m[1].toLowerCase() });

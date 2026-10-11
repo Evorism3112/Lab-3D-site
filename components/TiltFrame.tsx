@@ -4,8 +4,7 @@ import { useEffect, useRef } from "react";
 
 import {
   getViewportSize,
-  HERO_BAND_HEIGHT_VH,
-  HERO_BAND_TOP_VH,
+  HERO_BAND_CSS_BOX,
   heroShapeBox,
   heroShapeTransform,
 } from "@/lib/heroShape";
@@ -56,10 +55,7 @@ export function TiltFrame() {
         ref={shapeRef}
         className="absolute"
         style={{
-          left: "-20%",
-          width: "140%",
-          top: `${HERO_BAND_TOP_VH * 100}vh`,
-          height: `${HERO_BAND_HEIGHT_VH * 100}vh`,
+          ...HERO_BAND_CSS_BOX,
           background: "var(--accent)",
           transform: "rotate(-18deg)",
         }}

@@ -10,7 +10,7 @@ import { pushOrderToLab, quoteDeliveryFromLab } from "@/lib/labClient";
 import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
-import { getInfillOptions } from "@/lib/settings";
+import { getInfillOptions, getShopRates } from "@/lib/settings";
 import { serializeOrder } from "@/lib/serializers";
 
 const OrderStatusValues = Object.values(OrderStatus) as [string, ...string[]];
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
   }[] = [];
   let plasticGrams = 0;
 
-  const infill = await getInfillOptions();
+  const [infill, rates] = await Promise.all([getInfillOptions(), getShopRates()]);
   const available = await availableCatalog();
   // Once colors come from the Bambuddy inventory, a color is required — it is what we have in stock.
   const colorRequired = Object.keys(available.colors).length > 0;
@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
           infillPercent,
         },
         color,
+        rates,
       );
 
       resolvedItems.push({

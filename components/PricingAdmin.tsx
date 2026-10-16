@@ -6,12 +6,14 @@ import { useState } from "react";
 import { type AdminColor, ColorSuggestions, MaterialColorsAdmin } from "@/components/MaterialColorsAdmin";
 import { formatPrintTime, formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import { formatCents } from "@/lib/money";
+import { shopHourlyRateCents, type ShopRates } from "@/lib/pricing/defaults";
 import { computePrice } from "@/lib/pricing/engine";
 
 export type PricingMaterial = {
   id: string;
   name: string;
-  hourlyRateCents: number;
+  /** The material's own hour rate; null = the shop-wide one. */
+  ownHourlyRateCents: number | null;
   printSpeedCm3PerHour: number;
   spoolPriceCents: number;
   spoolWeightG: number;
@@ -28,10 +30,21 @@ export type PricingMaterial = {
 const rubles = (cents: number) => (cents / 100).toString();
 const EXAMPLE_VOLUME_CM3 = 50;
 
-function MaterialPricingCard({ material, dict }: { material: PricingMaterial; dict: Dictionary }) {
+function MaterialPricingCard({
+  material,
+  rates,
+  dict,
+}: {
+  material: PricingMaterial;
+  rates: ShopRates;
+  dict: Dictionary;
+}) {
   const t = dict.admin;
   const router = useRouter();
-  const [hourlyRate, setHourlyRate] = useState(rubles(material.hourlyRateCents));
+  // Empty = the shop-wide hour rate.
+  const [hourlyRate, setHourlyRate] = useState(
+    material.ownHourlyRateCents === null ? "" : rubles(material.ownHourlyRateCents),
+  );
   const [printSpeed, setPrintSpeed] = useState(material.printSpeedCm3PerHour.toString());
   const [spoolPrice, setSpoolPrice] = useState(rubles(material.spoolPriceCents));
   const [spoolWeight, setSpoolWeight] = useState(material.spoolWeightG.toString());
@@ -53,7 +66,7 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
   };
 
   const values = () => ({
-    hourlyRateCents: Math.round(Number(hourlyRate) * 100),
+    hourlyRateCents: hourlyRate.trim() === "" ? null : Math.round(Number(hourlyRate) * 100),
     printSpeedCm3PerHour: Number(printSpeed),
     spoolPriceCents: Math.round(Number(spoolPrice) * 100),
     spoolWeightG: Math.round(Number(spoolWeight)),
@@ -68,7 +81,7 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
 
   const validate = (v: ReturnType<typeof values>) => {
     const numbers = [
-      v.hourlyRateCents,
+      v.hourlyRateCents ?? 0,
       v.spoolPriceCents,
       v.setupFeeCents,
       v.minPriceCents,
@@ -105,12 +118,14 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
     router.refresh();
   };
 
-  // Live example so the admin sees what the numbers mean for a typical part.
+  // Live example so the admin sees what the numbers mean for a typical part — with the cost price
+  // (printer costs × hours + plastic at the spool price) and the profit, as in the costing sheet.
   const v = values();
   const example = validate(v)
     ? computePrice({
         volumeCm3: EXAMPLE_VOLUME_CM3,
-        hourlyRateCents: v.hourlyRateCents,
+        hourlyRateCents: v.hourlyRateCents ?? shopHourlyRateCents(rates),
+        plasticMarkupPercent: rates.plasticMarkupPercent,
         printSpeedCm3PerHour: v.printSpeedCm3PerHour,
         spoolPriceCents: v.spoolPriceCents,
         spoolWeightG: v.spoolWeightG,
@@ -121,8 +136,14 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
         quantity: 1,
       })
     : null;
+  const exampleCostCents = example
+    ? Math.round(
+        example.printHoursTotal * rates.machinePerHourCents +
+          (example.plasticGramsTotal * v.spoolPriceCents) / v.spoolWeightG,
+      )
+    : 0;
 
-  const field = (label: string, value: string, onChange: (v: string) => void, step: string) => (
+  const field = (label: string, value: string, onChange: (v: string) => void, step: string, placeholder?: string) => (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-muted">{label}</span>
       <input
@@ -130,6 +151,7 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
         min={0}
         step={step}
         value={value}
+        placeholder={placeholder}
         onChange={(e) => {
           onChange(e.target.value);
           edited();
@@ -157,7 +179,13 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-        {field(t.hourlyRateLabel, hourlyRate, setHourlyRate, "1")}
+        {field(
+          t.ownHourlyLabel,
+          hourlyRate,
+          setHourlyRate,
+          "1",
+          formatTemplate(t.ownHourlyPlaceholder, rubles(shopHourlyRateCents(rates))),
+        )}
         {field(t.printSpeedLabel, printSpeed, setPrintSpeed, "0.5")}
         {field(t.infillLabel, infill, setInfill, "1")}
         {field(t.spoolPriceLabel, spoolPrice, setSpoolPrice, "10")}
@@ -174,7 +202,9 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
           <span className="text-text">
             {formatPrintTime(example.printHoursTotal, dict.units)}, {Math.round(example.plasticGramsTotal)}{" "}
             {dict.units.g} — {formatCents(example.unitPriceCents, dict.locale)}
-          </span>
+          </span>{" "}
+          ({t.exampleCost} {formatCents(exampleCostCents, dict.locale)}, {t.exampleProfit}{" "}
+          {formatCents(example.unitPriceCents - exampleCostCents, dict.locale)})
         </p>
       )}
 
@@ -229,16 +259,18 @@ function MaterialPricingCard({ material, dict }: { material: PricingMaterial; di
 
 export function PricingAdmin({
   materials,
+  rates,
   dict,
 }: {
   materials: PricingMaterial[];
+  rates: ShopRates;
   dict: Dictionary;
 }) {
   return (
     <div className="flex flex-col gap-5">
       <ColorSuggestions />
       {materials.map((m) => (
-        <MaterialPricingCard key={m.id} material={m} dict={dict} />
+        <MaterialPricingCard key={m.id} material={m} rates={rates} dict={dict} />
       ))}
     </div>
   );

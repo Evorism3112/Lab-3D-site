@@ -2,6 +2,7 @@ import { cache } from "react";
 
 import { parsePhone, type Contacts, type Phone } from "@/lib/contacts";
 import { prisma } from "@/lib/db";
+import type { ShopRates } from "@/lib/pricing/defaults";
 
 // Admin-editable settings (the Setting table), each with its default.
 const DEFAULTS = {
@@ -18,6 +19,11 @@ const DEFAULTS = {
   "contacts.phones": "",
   "contacts.vkGroup": "",
   "contacts.vkChat": "",
+  /** Shop-wide pricing (lib/pricing/defaults.ts ShopRates), rubles and %: an hour of printing is
+   *  work + printer costs for the customer, and the plastic is sold with a markup. */
+  "pricing.laborPerHour": "150",
+  "pricing.machinePerHour": "54",
+  "pricing.plasticMarkupPercent": "20",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -74,5 +80,19 @@ export const getContacts = cache(async (): Promise<Contacts> => {
       .filter((p): p is Phone => p !== null),
     vkGroup: values["contacts.vkGroup"],
     vkChat: values["contacts.vkChat"],
+  };
+});
+
+/** Shop-wide pricing rates; a broken value falls back to its default. Loaded once per request. */
+export const getShopRates = cache(async (): Promise<ShopRates> => {
+  const values = await getSettings(["pricing.laborPerHour", "pricing.machinePerHour", "pricing.plasticMarkupPercent"]);
+  const num = (key: keyof typeof values) => {
+    const n = Number(values[key]);
+    return Number.isFinite(n) && n >= 0 ? n : Number(DEFAULTS[key]);
+  };
+  return {
+    laborPerHourCents: Math.round(num("pricing.laborPerHour") * 100),
+    machinePerHourCents: Math.round(num("pricing.machinePerHour") * 100),
+    plasticMarkupPercent: num("pricing.plasticMarkupPercent"),
   };
 });

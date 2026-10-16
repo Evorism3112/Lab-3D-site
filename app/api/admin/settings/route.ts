@@ -17,6 +17,14 @@ const SettingsSchema = z
         vkChat: z.string().max(200),
       })
       .optional(),
+    // Shop-wide pricing: rubles per hour and markup %.
+    pricing: z
+      .object({
+        laborPerHour: z.number().min(0).max(1_000_000),
+        machinePerHour: z.number().min(0).max(1_000_000),
+        plasticMarkupPercent: z.number().min(0).max(1000),
+      })
+      .optional(),
   })
   // The default must be one of the levels offered to customers.
   .refine((v) => v.defaultInfill === undefined || !v.infillLevels || v.infillLevels.includes(v.defaultInfill));
@@ -52,6 +60,11 @@ export async function PATCH(request: NextRequest) {
     await setSetting("contacts.phones", phones.join("\n"));
     await setSetting("contacts.vkGroup", vkGroup);
     await setSetting("contacts.vkChat", vkChat);
+  }
+  if (parsed.data.pricing !== undefined) {
+    await setSetting("pricing.laborPerHour", String(parsed.data.pricing.laborPerHour));
+    await setSetting("pricing.machinePerHour", String(parsed.data.pricing.machinePerHour));
+    await setSetting("pricing.plasticMarkupPercent", String(parsed.data.pricing.plasticMarkupPercent));
   }
   return NextResponse.json({ ok: true });
 }

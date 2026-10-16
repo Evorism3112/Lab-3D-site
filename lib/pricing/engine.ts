@@ -16,6 +16,8 @@ export type PricingInput = {
   minPriceCents: number;
   /** Finish price multiplier, e.g. 1 for standard, 1.15 for sanded. Defaults to 1. */
   finishMultiplier?: number;
+  /** Markup on the plastic over its spool price, %. Defaults to 0. */
+  plasticMarkupPercent?: number;
   quantity: number;
 };
 
@@ -41,7 +43,7 @@ export type PricingBreakdown = {
  *
  * hours    = volume / printSpeed
  * grams    = volume * infill% * density
- * subtotal = (hours * hourlyRate + grams * spoolPrice / spoolWeight) * finishMultiplier
+ * subtotal = (hours * hourlyRate + grams * spoolPrice / spoolWeight * (1 + markup%)) * finishMultiplier
  * unitPrice = max(minPrice, subtotal) + setupFee
  */
 export function computePrice(input: PricingInput): PricingBreakdown {
@@ -58,6 +60,7 @@ export function computePrice(input: PricingInput): PricingBreakdown {
     quantity,
   } = input;
   const finishMultiplier = input.finishMultiplier ?? 1;
+  const plasticMarkup = 1 + (input.plasticMarkupPercent ?? 0) / 100;
 
   if (!(volumeCm3 > 0)) throw new PricingError("volumeCm3 must be positive");
   if (!(hourlyRateCents >= 0)) throw new PricingError("hourlyRateCents must be non-negative");
@@ -72,7 +75,7 @@ export function computePrice(input: PricingInput): PricingBreakdown {
 
   const timeCostCents = Math.round(printHoursPerUnit * hourlyRateCents * finishMultiplier);
   const plasticCostCents = Math.round(
-    ((plasticGramsPerUnit * spoolPriceCents) / spoolWeightG) * finishMultiplier,
+    ((plasticGramsPerUnit * spoolPriceCents) / spoolWeightG) * plasticMarkup * finishMultiplier,
   );
   const materialCostCents = timeCostCents + plasticCostCents;
   const minPriceFloorApplied = materialCostCents < minPriceCents;

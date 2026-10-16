@@ -1,4 +1,4 @@
-import { resolvePricing, type MaterialPricingRow } from "./defaults";
+import { resolvePricing, type MaterialPricingRow, type ShopRates } from "./defaults";
 import { computePrice, type PricingBreakdown } from "./engine";
 import { effectiveFillShare } from "./options";
 
@@ -16,9 +16,10 @@ type MaterialForPricing = MaterialPricingRow & {
 export function computeMaterialPrice(
   material: MaterialForPricing,
   input: { volumeCm3: number; finishMultiplier?: number; quantity: number; infillPercent?: number },
-  color?: { spoolPriceCents: number | null } | null,
+  color: { spoolPriceCents: number | null } | null | undefined,
+  rates: ShopRates,
 ): PricingBreakdown {
-  const pricing = resolvePricing(material);
+  const pricing = resolvePricing(material, rates);
   const { infillPercent: slicerInfill, ...rest } = input;
   const share = slicerInfill === undefined ? pricing.infillPercent : effectiveFillShare(slicerInfill, pricing.infillPercent);
   return computePrice({

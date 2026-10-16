@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
-import { getInfillOptions } from "@/lib/settings";
+import { getInfillOptions, getShopRates } from "@/lib/settings";
 
 const QuoteSchema = z.object({
   fileId: z.string(),
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
   const { fileId, materialId, finishId, colorId, quantity, scalePercent } = parsed.data;
 
-  const infill = await getInfillOptions();
+  const [infill, rates] = await Promise.all([getInfillOptions(), getShopRates()]);
   const infillPercent = parsed.data.infillPercent ?? infill.defaultLevel;
   if (!infill.levels.includes(infillPercent)) {
     return NextResponse.json({ error: "Infill level is not available" }, { status: 400 });
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         infillPercent,
       },
       color,
+      rates,
     );
 
     return NextResponse.json({

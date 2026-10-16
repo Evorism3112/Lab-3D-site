@@ -7,7 +7,7 @@ import { localizeCatalogText } from "@/lib/i18n/catalog";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
 import { resolvePricing } from "@/lib/pricing/defaults";
-import { getInfillOptions } from "@/lib/settings";
+import { getInfillOptions, getShopRates } from "@/lib/settings";
 import { serializeFile } from "@/lib/serializers";
 import { COLOR_ORDER, materialImageUrl } from "@/lib/types";
 
@@ -19,7 +19,7 @@ export default async function ConfigurePage({
   const { fileId } = await params;
   const dict = getDictionary(await getServerLocale());
 
-  const [available, infill] = await Promise.all([availableCatalog(), getInfillOptions()]);
+  const [available, infill, rates] = await Promise.all([availableCatalog(), getInfillOptions(), getShopRates()]);
   const [file, materials] = await Promise.all([
     prisma.uploadedFile.findUnique({ where: { id: fileId } }),
     prisma.material.findMany({
@@ -59,7 +59,7 @@ export default async function ConfigurePage({
         slug: m.slug,
         name: m.name,
         description: localizeCatalogText(m.description, dict.locale),
-        hourlyRateCents: resolvePricing(m).hourlyRateCents,
+        hourlyRateCents: resolvePricing(m, rates).hourlyRateCents,
         setupFeeCents: m.setupFeeCents,
         minPriceCents: m.minPriceCents,
         leadTimeDays: m.leadTimeDays,

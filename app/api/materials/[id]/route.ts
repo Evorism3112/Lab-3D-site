@@ -5,7 +5,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 
 const PricingSchema = z.object({
-  hourlyRateCents: z.number().int().min(0).max(100_000_000).optional(),
+  // null = use the shop-wide hour rate.
+  hourlyRateCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
   printSpeedCm3PerHour: z.number().min(0.1).max(100000).optional(),
   spoolPriceCents: z.number().int().min(0).max(100_000_000).optional(),
   spoolWeightG: z.number().int().min(1).max(1_000_000).optional(),

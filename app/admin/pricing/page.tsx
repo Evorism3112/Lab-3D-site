@@ -1,10 +1,11 @@
 import { BambuddyColorsAdmin } from "@/components/BambuddyColorsAdmin";
 import { InfillLevelsAdmin } from "@/components/InfillLevelsAdmin";
 import { PricingAdmin } from "@/components/PricingAdmin";
+import { ShopRatesAdmin } from "@/components/ShopRatesAdmin";
 import { isBambuddyConfigured } from "@/lib/bambuddy";
 import { ensureColorsFresh, getColorAvailability, isColorAvailable } from "@/lib/colorSync";
 import { prisma } from "@/lib/db";
-import { getInfillOptions, getSettings } from "@/lib/settings";
+import { getInfillOptions, getSettings, getShopRates } from "@/lib/settings";
 import { localizeCatalogText } from "@/lib/i18n/catalog";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
@@ -16,7 +17,7 @@ export default async function AdminPricingPage() {
 
   // Also kicks off the periodic Bambuddy sync, so the stock numbers below are fresh.
   await ensureColorsFresh();
-  const [materials, availability, settings, infill] = await Promise.all([
+  const [materials, availability, settings, infill, rates] = await Promise.all([
     prisma.material.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -27,6 +28,7 @@ export default async function AdminPricingPage() {
     getColorAvailability(),
     getSettings(["bambuddy.lastSyncAt", "bambuddy.lastSyncError"]),
     getInfillOptions(),
+    getShopRates(),
   ]);
 
   return (
@@ -43,15 +45,19 @@ export default async function AdminPricingPage() {
         />
       </div>
       <div className="mt-5">
+        <ShopRatesAdmin dict={dict} rates={rates} />
+      </div>
+      <div className="mt-5">
         <InfillLevelsAdmin dict={dict} levels={infill.levels} defaultLevel={infill.defaultLevel} />
       </div>
       <div className="mt-5">
         <PricingAdmin
           dict={dict}
+          rates={rates}
           materials={materials.map((m) => ({
             id: m.id,
             name: m.name,
-            ...resolvePricing(m),
+            ...resolvePricing(m, rates),
             setupFeeCents: m.setupFeeCents,
             minPriceCents: m.minPriceCents,
             leadTimeDays: m.leadTimeDays,

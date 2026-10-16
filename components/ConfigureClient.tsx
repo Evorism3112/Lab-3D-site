@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { MaterialThumb } from "@/components/MaterialThumb";
 import { ModelViewer } from "@/components/ModelViewer";
 import { formatDays, formatPrintTime, formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import { formatAmount, formatCents } from "@/lib/money";
+import { isSmoothFinish, plasticLook } from "@/lib/plasticLook";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
 import type { FileDTO, MaterialDTO, QuoteDTO } from "@/lib/types";
 
@@ -62,6 +62,8 @@ export function ConfigureClient({
     return groups;
   }, [material]);
   const finishId = resolveSelection(selectedFinishId, material?.finishes ?? []);
+  // How the chosen plastic looks in the 3D preview — it replaces the material pictures.
+  const look = plasticLook(material?.slug);
 
   useEffect(() => {
     if (!material) return;
@@ -118,7 +120,13 @@ export function ConfigureClient({
     <div className="grid grid-cols-1 gap-8 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(600px,700px)]">
       <div>
         <div className="h-[55vh] min-h-[360px] lg:h-[calc(100vh-240px)] lg:min-h-[480px]">
-          <ModelViewer fileUrl={`/api/files/${file.id}/raw`} format={file.format} />
+          <ModelViewer
+            fileUrl={`/api/files/${file.id}/raw`}
+            format={file.format}
+            look={look}
+            color={material?.colors.find((c) => c.id === colorId)?.hex ?? look.defaultColor}
+            smooth={isSmoothFinish(material?.finishes.find((f) => f.id === finishId)?.name)}
+          />
         </div>
         <dl className="mt-4 grid grid-cols-3 gap-4 text-sm text-muted">
           <div>
@@ -155,14 +163,13 @@ export function ConfigureClient({
                   type="button"
                   onClick={() => setMaterialId(m.id)}
                   aria-pressed={isSelected}
-                  className={`overflow-hidden rounded-xl border text-left transition-colors ${
+                  className={`rounded-xl border text-left transition-colors ${
                     isSelected
                       ? "border-accent bg-accent-soft"
                       : "border-border bg-bg-soft hover:border-accent/40"
                   }`}
                 >
-                  <MaterialThumb imageUrl={m.imageUrl} alt={m.name} className="aspect-[4/3] w-full" />
-                  <div className="p-3">
+                  <div className="px-3 py-2.5">
                     <div className={`text-sm font-semibold ${isSelected ? "text-accent" : "text-text"}`}>
                       {m.name}
                     </div>

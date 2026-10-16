@@ -56,6 +56,7 @@ export default async function ConfigurePage({
       defaultInfill={infill.defaultLevel}
       materials={materials.map((m) => ({
         id: m.id,
+        slug: m.slug,
         name: m.name,
         description: localizeCatalogText(m.description, dict.locale),
         hourlyRateCents: resolvePricing(m).hourlyRateCents,

@@ -20,6 +20,8 @@ export type FinishDTO = { id: string; name: string; multiplier: number };
 
 export type MaterialDTO = {
   id: string;
+  /** "pla", "petg", … — also picks how the plastic looks in the 3D preview (lib/plasticLook.ts). */
+  slug: string;
   name: string;
   description: string | null;
   /** Printer time, kopecks per hour. */

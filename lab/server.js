@@ -653,11 +653,18 @@ function carrierKind(service) {
 }
 
 // data: { delivery_service, pvz_address, phone, items, box_index, point } → посылка, ПВЗ и стоимость.
+// Сайт (/api/external/delivery/quote) товаров каталога не знает — он передаёт вместо items
+// готовые items_weight_g (печатные детали) и goods_total; коробка — та же, первая из Каталога.
 async function quoteDelivery(data) {
   const items = Array.isArray(data.items) ? data.items : [];
   const kind = carrierKind(data.delivery_service);
   const parcel = parcelFor(items, data.box_index == null || data.box_index === '' ? null : Number(data.box_index));
-  const goodsTotal = items.reduce((sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
+  const extraWeight = Math.max(0, Math.round(Number(data.items_weight_g) || 0));
+  parcel.items_weight_g += extraWeight;
+  parcel.weight_g += extraWeight;
+  const goodsTotal = data.goods_total != null
+    ? Number(data.goods_total) || 0
+    : items.reduce((sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
   const result = { kind, parcel, point: null, candidates: [], price: null };
   if (!kind) return result; // Почта/другое — сумма вручную
   if (!String(data.pvz_address || '').trim() && !data.point) throw new Error('Укажите адрес ПВЗ');
@@ -1103,6 +1110,22 @@ const server = http.createServer(async (req, res) => {
       const data = await readBody(req);
       if (!data.external_order_id) return sendJson(res, 400, { error: 'external_order_id обязателен' });
       return sendJson(res, 201, createOrUpdateExternalOrder(data));
+    }
+
+    // Расчёт доставки для оформления заказа на сайте — тот же, что в форме нового заказа CRM.
+    if (pathname === '/api/external/delivery/quote' && req.method === 'POST') {
+      if (!checkExternalAuth(req)) return sendJson(res, 401, { error: 'Неверный API-ключ' });
+      try {
+        const result = await quoteDelivery(await readBody(req));
+        return sendJson(res, 200, {
+          kind: result.kind,
+          point: result.point ? { id: result.point.id, label: result.point.label } : null,
+          candidates: result.candidates,
+          price: result.price,
+        });
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
     }
 
     const externalPaymentMatch = pathname.match(/^\/api\/external\/orders\/([^/]+)\/payment$/);

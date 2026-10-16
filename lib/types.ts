@@ -83,6 +83,8 @@ export type OrderDTO = {
     city: string | null;
     postal: string | null;
     country: string | null;
+    /** Delivery estimate at checkout, rubles; null when it couldn't be calculated. */
+    deliveryPrice: number | null;
   };
   totalCents: number;
   items: OrderItemDTO[];

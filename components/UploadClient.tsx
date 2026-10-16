@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -114,6 +115,16 @@ export function UploadClient({ dict }: { dict: Dictionary }) {
       </div>
 
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
+
+      <div className="mt-6 flex flex-col gap-2 text-sm">
+        {/* A plain link: prefetching the route would create the sample file on every page view. */}
+        <a href="/order/sample" className="text-muted transition-colors hover:text-accent">
+          {t.trySample} →
+        </a>
+        <Link href="/order/request" className="text-muted transition-colors hover:text-accent">
+          {t.noModel} →
+        </Link>
+      </div>
     </div>
   );
 }

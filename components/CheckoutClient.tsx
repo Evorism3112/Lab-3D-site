@@ -4,11 +4,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { AddressField } from "@/components/AddressField";
-import { DELIVERY_SERVICES, type DeliveryService } from "@/lib/address";
+import { DELIVERY_SERVICES, formatAddressLine, type DeliveryService } from "@/lib/address";
 import type { AddressSuggestion } from "@/lib/addressSuggest";
-import type { Dictionary } from "@/lib/i18n/translations";
-import { formatCents } from "@/lib/money";
+import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
+import type { DeliveryQuote } from "@/lib/labClient";
+import { formatAmount, formatCents } from "@/lib/money";
 import type { QuoteDTO } from "@/lib/types";
+
+// Carriers the CRM can price (lab quoteDelivery); Russian Post is priced by hand.
+const QUOTED_SERVICES: DeliveryService[] = ["СДЭК", "Озон"];
+const DELIVERY_QUOTE_DELAY_MS = 800;
 
 function CheckoutForm({ dict }: { dict: Dictionary }) {
   const t = dict.checkout;
@@ -38,6 +43,59 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
   const [house, setHouse] = useState<{ text: string; picked: AddressSuggestion | null }>({ text: "", picked: null });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Delivery estimate from the CRM calculator; the point is the customer's pick when several match.
+  const [delivery, setDelivery] = useState<{ key: string; quote: DeliveryQuote | null } | null>(null);
+  const [deliveryPoint, setDeliveryPoint] = useState<{ key: string; id: string } | null>(null);
+
+  const addressLine =
+    city.text.trim() && street.text.trim() && house.text.trim()
+      ? formatAddressLine({
+          city: city.picked?.withType ?? city.text,
+          street: street.picked?.withType ?? street.text,
+          house: house.picked?.withType ?? house.text,
+          extra: form.extra,
+        })
+      : "";
+  const phoneDigits = form.phone.replace(/\D/g, "").length;
+  // Ozon prices a parcel for a recipient phone, so it waits for one.
+  const canQuoteDelivery =
+    Boolean(quote && addressLine) && QUOTED_SERVICES.includes(form.service) && (form.service !== "Озон" || phoneDigits >= 10);
+  const deliveryKey = canQuoteDelivery ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}` : "";
+  const pickedPoint = deliveryPoint?.key === deliveryKey ? deliveryPoint.id : undefined;
+  const requestKey = `${deliveryKey}|${pickedPoint ?? ""}`;
+  const currentDelivery = deliveryKey && delivery?.key === requestKey ? delivery.quote : null;
+  const isQuotingDelivery = Boolean(deliveryKey) && delivery?.key !== requestKey;
+
+  useEffect(() => {
+    if (!deliveryKey || !quote) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch("/api/delivery/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          service: form.service,
+          address: addressLine,
+          point: pickedPoint,
+          phone: form.phone || undefined,
+          weightG: quote.plasticGramsTotal,
+          goodsTotalRub: quote.totalPriceCents / 100,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : { quote: null }))
+        .then((data) => setDelivery({ key: requestKey, quote: data.quote }))
+        .catch(() => {
+          if (!controller.signal.aborted) setDelivery({ key: requestKey, quote: null });
+        });
+    }, DELIVERY_QUOTE_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // requestKey covers the service, address, phone and point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey, quote]);
 
   useEffect(() => {
     if (!fileId || !materialId) return;
@@ -72,6 +130,7 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
             house: house.picked?.withType ?? house.text,
             extra: form.extra,
             postal: house.picked?.postal,
+            deliveryPoint: currentDelivery?.price ? currentDelivery.point?.id : undefined,
           },
         }),
       });
@@ -179,6 +238,51 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
           value={form.extra}
           onChange={(v) => setForm({ ...form, extra: v })}
         />
+
+        {isQuotingDelivery && <p className="text-sm text-muted">{t.deliveryCalculating}</p>}
+        {!isQuotingDelivery && currentDelivery && !currentDelivery.point && currentDelivery.candidates.length > 0 && (
+          <div>
+            <p className="text-sm text-text">{t.deliveryPickPoint}</p>
+            <div className="mt-2 flex flex-col gap-2">
+              {currentDelivery.candidates.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setDeliveryPoint({ key: deliveryKey, id: c.id })}
+                  className="card px-3 py-2 text-left text-sm text-muted transition-colors hover:border-accent hover:text-text"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!isQuotingDelivery && currentDelivery?.price && quote && (
+          <div className="card flex flex-col gap-1 p-4 text-sm">
+            {currentDelivery.point && <p className="text-xs text-muted">{currentDelivery.point.label}</p>}
+            <div className="flex items-baseline justify-between">
+              <span className="text-muted">
+                {t.deliveryCost}
+                {currentDelivery.price.period_max
+                  ? ` · ${formatTemplate(
+                      t.deliveryDays,
+                      currentDelivery.price.period_min && currentDelivery.price.period_min !== currentDelivery.price.period_max
+                        ? `${currentDelivery.price.period_min}–${currentDelivery.price.period_max}`
+                        : currentDelivery.price.period_max,
+                    )}`
+                  : ""}
+              </span>
+              <span className="text-text">≈ {formatAmount(currentDelivery.price.total, dict.locale)}</span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-muted">{t.deliveryTotal}</span>
+              <span className="font-bold text-text">
+                ≈ {formatAmount(quote.totalPriceCents / 100 + currentDelivery.price.total, dict.locale)}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted">{t.deliveryNote}</p>
+          </div>
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

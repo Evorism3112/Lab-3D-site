@@ -17,7 +17,7 @@ export function ContactLinks({
     <ul className={`flex flex-col gap-2 ${className}`}>
       {contacts.phones.map((phone) => (
         <li key={phone.href}>
-          <a href={phone.href} className={`whitespace-nowrap text-text ${link}`}>
+          <a href={phone.href} className={`whitespace-nowrap ${link}`}>
             {phone.label}
           </a>
         </li>
@@ -25,14 +25,14 @@ export function ContactLinks({
       {contacts.vkGroup && (
         <li>
           <a href={contacts.vkGroup} target="_blank" rel="noopener noreferrer" className={link}>
-            {dict.footer.vkGroup} ↗
+            {dict.footer.vkGroup}
           </a>
         </li>
       )}
       {contacts.vkChat && (
         <li>
           <a href={contacts.vkChat} target="_blank" rel="noopener noreferrer" className={link}>
-            {dict.footer.vkChat} ↗
+            {dict.footer.vkChat}
           </a>
         </li>
       )}

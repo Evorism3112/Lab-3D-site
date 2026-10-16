@@ -40,6 +40,16 @@ export async function Footer() {
               </Link>
             </li>
             <li>
+              <Link href="/order/request" className={link}>
+                {t.request}
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className={link}>
+                {dict.header.faq}
+              </Link>
+            </li>
+            <li>
               <Link href="/contacts" className={link}>
                 {dict.header.contacts}
               </Link>

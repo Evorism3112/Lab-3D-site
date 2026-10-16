@@ -6,6 +6,7 @@ import { BRAND_NAME } from "@/lib/brand";
 import { prisma } from "@/lib/db";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
+import { showcaseDetails, SHOWCASE_SELECT } from "@/lib/showcase";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = getDictionary(await getServerLocale()).worksPage;
@@ -18,7 +19,7 @@ export default async function WorksPage() {
   const t = dict.worksPage;
   const items = await prisma.showcaseItem.findMany({
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: { id: true, title: true },
+    select: SHOWCASE_SELECT,
   });
 
   return (
@@ -40,7 +41,12 @@ export default async function WorksPage() {
                   loading="lazy"
                   className="aspect-square w-full object-cover"
                 />
-                <figcaption className="px-5 py-4 text-sm text-text">{item.title}</figcaption>
+                <figcaption className="px-5 py-4">
+                  <span className="block text-sm text-text">{item.title}</span>
+                  {showcaseDetails(item, dict.locale) && (
+                    <span className="mt-1 block text-xs text-muted">{showcaseDetails(item, dict.locale)}</span>
+                  )}
+                </figcaption>
               </figure>
             </Reveal>
           ))}

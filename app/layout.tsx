@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Suspense } from "react";
 
+import { FloatingChat } from "@/components/FloatingChat";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Providers } from "@/components/Providers";
@@ -9,6 +10,7 @@ import { YANDEX_METRIKA_ID, YandexMetrika } from "@/components/YandexMetrika";
 import { BRAND_NAME } from "@/lib/brand";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
+import { getContacts } from "@/lib/settings";
 
 import "./globals.css";
 
@@ -28,6 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const locale = await getServerLocale();
+  const contacts = await getContacts();
   return (
     <html lang={locale} className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
@@ -35,6 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <Header />
           <main className="flex-1">{children}</main>
           <Footer />
+          <FloatingChat href={contacts.vkChat || contacts.vkGroup} label={getDictionary(locale).footer.floatingChat} />
         </Providers>
         {/* useSearchParams needs a Suspense boundary, or every page would render client-side only. */}
         <Suspense fallback={null}>

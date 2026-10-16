@@ -146,3 +146,23 @@ export function getBambuddyPublicUrl(): string {
     return "http://localhost:8000";
   }
 }
+
+const FARM_SUMMARY_TTL_MS = 60_000;
+let farmSummaryCache: { at: number; value: { total: number; printing: number } | null } | null = null;
+
+/**
+ * How many printers we have and how many are printing, for the home page. Cached for a minute
+ * so page views don't poll every printer; null when Bambuddy is not set up or unreachable.
+ */
+export async function getFarmSummary(): Promise<{ total: number; printing: number } | null> {
+  if (!isBambuddyConfigured()) return null;
+  if (farmSummaryCache && Date.now() - farmSummaryCache.at < FARM_SUMMARY_TTL_MS) return farmSummaryCache.value;
+  const value = await listPrinters()
+    .then((printers) => ({
+      total: printers.length,
+      printing: printers.filter((p) => p.connected && (p.state === "RUNNING" || p.state === "PREPARE")).length,
+    }))
+    .catch(() => null);
+  farmSummaryCache = { at: Date.now(), value };
+  return value;
+}

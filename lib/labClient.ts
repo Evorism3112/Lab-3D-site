@@ -16,10 +16,11 @@ function authHeaders(): Record<string, string> {
   return LAB_API_KEY ? { Authorization: `Bearer ${LAB_API_KEY}` } : {};
 }
 
-async function callLab(path: string, init: RequestInit): Promise<void> {
+/** The parsed JSON reply, or null when lab is not configured, unreachable or answered with an error. */
+async function callLab(path: string, init: RequestInit): Promise<unknown> {
   if (!LAB_API_URL) {
     console.error(`[labClient] LAB_API_URL is not configured, skipping ${path}`);
-    return;
+    return null;
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -32,9 +33,12 @@ async function callLab(path: string, init: RequestInit): Promise<void> {
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error(`[labClient] ${path} failed: ${res.status} ${body}`);
+      return null;
     }
+    return await res.json().catch(() => null);
   } catch (err) {
     console.error(`[labClient] ${path} failed:`, err instanceof Error ? err.message : err);
+    return null;
   } finally {
     clearTimeout(timeout);
   }
@@ -60,6 +64,8 @@ function toLabPayload(order: OrderDTO) {
     delivery_service: order.shipping.deliveryService,
     pvz_address: order.shipping.address,
     shipping_address: formatShippingAddress(order.shipping),
+    // The estimate shown at checkout; staff confirm the exact amount with the customer.
+    delivery_price: order.shipping.deliveryPrice ?? undefined,
     payment_status: "unpaid",
     // Lab staff work in Russian, so color/finish go over in Russian.
     items: order.items.map((item) => {
@@ -102,4 +108,72 @@ export async function markOrderPaidInLab(orderId: string): Promise<void> {
   await callLab(`/api/external/orders/${encodeURIComponent(orderId)}/payment`, {
     method: "PATCH",
   });
+}
+
+/** A "no 3D model" request (/order/request) lands on the CRM board as a new order with an empty item list. */
+export async function pushModelRequestToLab(request: {
+  id: string;
+  name: string;
+  contact: string;
+  description: string;
+  photoCount: number;
+}): Promise<void> {
+  const isPhone = /^\+?[\d\s()-]{10,}$/.test(request.contact);
+  const photos = Array.from(
+    { length: request.photoCount },
+    (_, i) => `${APP_URL}/api/requests/${request.id}/photos/${i}`,
+  );
+  await callLab("/api/external/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      external_order_id: `request-${request.id}`,
+      full_name: request.name,
+      phone: isPhone ? request.contact : "",
+      payment_status: "unpaid",
+      notes: [
+        "Заявка с сайта «Нет 3D-модели»: нужно смоделировать и напечатать.",
+        `Связь: ${request.contact}`,
+        "",
+        request.description,
+        ...(photos.length ? ["", "Фото:", ...photos] : []),
+      ].join("\n"),
+      items: [],
+    }),
+  });
+}
+
+export type DeliveryQuote = {
+  /** A pickup point picked for the address, or null when several match — see candidates. */
+  point: { id: string; label: string } | null;
+  candidates: { id: string; label: string }[];
+  price: { total: number; period_min?: number | null; period_max?: number | null } | null;
+};
+
+/**
+ * Delivery cost to a pickup point, calculated by lab with the same CDEK / Ozon settings and box
+ * as its own order form. null when lab can't quote (carrier without a calculator, address not
+ * found, lab unreachable) — the checkout then simply shows no estimate.
+ */
+export async function quoteDeliveryFromLab(input: {
+  service: string;
+  address: string;
+  point?: string;
+  phone?: string;
+  weightG: number;
+  goodsTotalRub: number;
+}): Promise<DeliveryQuote | null> {
+  const result = (await callLab("/api/external/delivery/quote", {
+    method: "POST",
+    body: JSON.stringify({
+      delivery_service: input.service,
+      pvz_address: input.address,
+      point: input.point,
+      phone: input.phone,
+      items: [],
+      items_weight_g: input.weightG,
+      goods_total: input.goodsTotalRub,
+    }),
+  })) as (DeliveryQuote & { kind: string | null }) | null;
+  if (!result?.kind) return null;
+  return { point: result.point, candidates: result.candidates ?? [], price: result.price };
 }

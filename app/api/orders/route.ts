@@ -6,7 +6,7 @@ import { DELIVERY_SERVICES, formatAddressLine } from "@/lib/address";
 import { availableCatalog } from "@/lib/colorSync";
 import { prisma } from "@/lib/db";
 import { OrderStatus } from "@/lib/generated/prisma/client";
-import { pushOrderToLab } from "@/lib/labClient";
+import { pushOrderToLab, quoteDeliveryFromLab } from "@/lib/labClient";
 import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
@@ -43,6 +43,8 @@ const CreateOrderSchema = z.object({
     house: z.string().trim().min(1).max(50),
     extra: z.string().trim().max(200).optional(),
     postal: z.string().trim().max(20).optional(),
+    // The pickup point the checkout delivery estimate was calculated for (CRM point id).
+    deliveryPoint: z.string().trim().max(50).optional(),
   }),
 });
 
@@ -66,6 +68,7 @@ export async function POST(request: NextRequest) {
     unitPriceCents: number;
     totalPriceCents: number;
   }[] = [];
+  let plasticGrams = 0;
 
   const infill = await getInfillOptions();
   const available = await availableCatalog();
@@ -117,6 +120,7 @@ export async function POST(request: NextRequest) {
         unitPriceCents: breakdown.unitPriceCents,
         totalPriceCents: breakdown.totalPriceCents,
       });
+      plasticGrams += breakdown.plasticGramsTotal;
     } catch (err) {
       if (err instanceof PricingError) {
         return NextResponse.json({ error: err.message }, { status: 400 });
@@ -126,6 +130,19 @@ export async function POST(request: NextRequest) {
   }
 
   const totalCents = resolvedItems.reduce((sum, i) => sum + i.totalPriceCents, 0);
+  const addressLine = formatAddressLine(shipping);
+
+  // Recalculated here rather than taken from the browser, for the point the customer saw it for.
+  const delivery = shipping.deliveryPoint
+    ? await quoteDeliveryFromLab({
+        service: shipping.service,
+        address: addressLine,
+        point: shipping.deliveryPoint,
+        phone: shipping.phone,
+        weightG: plasticGrams,
+        goodsTotalRub: totalCents / 100,
+      })
+    : null;
 
   const order = await prisma.order.create({
     data: {
@@ -136,10 +153,11 @@ export async function POST(request: NextRequest) {
       shippingPhone: shipping.phone,
       deliveryService: shipping.service,
       // One line the CRM splits into city / street / house / extra (lib/address.ts).
-      shippingAddress: formatAddressLine(shipping),
+      shippingAddress: addressLine,
       shippingCity: shipping.city,
       shippingPostal: shipping.postal || null,
       shippingCountry: "Россия",
+      deliveryPriceRub: delivery?.price ? Math.round(delivery.price.total) : null,
       totalCents,
       items: { create: resolvedItems },
     },

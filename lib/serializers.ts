@@ -60,6 +60,7 @@ export function serializeOrder(order: Order & { items: OrderItemWithRelations[] 
       city: order.shippingCity,
       postal: order.shippingPostal,
       country: order.shippingCountry,
+      deliveryPrice: order.deliveryPriceRub,
     },
     totalCents: order.totalCents,
     items: order.items.map(serializeOrderItem),

@@ -149,6 +149,10 @@ model ShowcaseItem {
   id         String   @id @default(cuid())
   title      String
   storageKey String
+  // Optional caption details shown under the photo: "PETG · 2 days · 450 ₽".
+  material   String?
+  printDays  Int?
+  priceRub   Int?
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
 }
@@ -165,6 +169,8 @@ model Order {
   shippingPhone   String?
   // Carrier as the CRM names it: "СДЭК", "Озон", "Почта России".
   deliveryService String?
+  // Delivery estimate from the CRM calculator at checkout, rubles; staff confirm the exact amount.
+  deliveryPriceRub Int?
   email           String?
   totalCents      Int         @default(0)
   stripeSessionId String?     @unique
@@ -195,4 +201,25 @@ model OrderItem {
   material Material @relation(fields: [materialId], references: [id])
   color    Color?   @relation(fields: [colorId], references: [id])
   finish   Finish?  @relation(fields: [finishId], references: [id])
+}
+
+// Customer reviews shown on the home page (/admin/reviews). Copied from real ones — VK, Avito…
+model Review {
+  id        String   @id @default(cuid())
+  author    String
+  text      String
+  sourceUrl String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// "No 3D model?" requests (/order/request): a description and photos instead of an STL.
+// Each one also goes to the CRM as a new order with the description in its notes.
+model ModelRequest {
+  id          String   @id @default(cuid())
+  name        String
+  contact     String
+  description String
+  photoKeys   String[]
+  createdAt   DateTime @default(now())
 }

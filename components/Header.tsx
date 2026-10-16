@@ -18,6 +18,7 @@ export async function Header() {
     <>
       <NavLink href="/materials">{dict.header.materials}</NavLink>
       <NavLink href="/works">{dict.header.works}</NavLink>
+      <NavLink href="/faq">{dict.header.faq}</NavLink>
       <NavLink href="/contacts">{dict.header.contacts}</NavLink>
     </>
   );

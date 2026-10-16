@@ -2,6 +2,7 @@ import { ShowcaseAdmin } from "@/components/ShowcaseAdmin";
 import { prisma } from "@/lib/db";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
+import { SHOWCASE_SELECT } from "@/lib/showcase";
 
 export default async function AdminShowcasePage() {
   const dict = getDictionary(await getServerLocale());
@@ -9,7 +10,7 @@ export default async function AdminShowcasePage() {
 
   const items = await prisma.showcaseItem.findMany({
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: { id: true, title: true },
+    select: SHOWCASE_SELECT,
   });
 
   return (

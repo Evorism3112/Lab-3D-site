@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { imageContentType } from "@/lib/images";
 import { storage } from "@/lib/storage";
-
-const CONTENT_TYPES: Record<string, string> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-};
 
 export async function GET(
   _request: Request,
@@ -22,11 +16,10 @@ export async function GET(
   }
 
   const buffer = await storage.read(item.storageKey);
-  const ext = item.storageKey.split(".").pop()?.toLowerCase() ?? "";
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
+      "Content-Type": imageContentType(item.storageKey),
       "Cache-Control": "public, max-age=86400",
     },
   });

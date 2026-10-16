@@ -29,7 +29,8 @@ const referenced = new Set(
     await client.query(
       `select "storageKey" as k from "UploadedFile"
        union select "storageKey" from "ShowcaseItem"
-       union select "imageKey" from "Material" where "imageKey" is not null`,
+       union select "imageKey" from "Material" where "imageKey" is not null
+       union select unnest("photoKeys") from "ModelRequest"`,
     )
   ).rows.map((r) => r.k),
 );

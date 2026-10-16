@@ -7,6 +7,7 @@ import { ScrollParallax } from "@/components/ScrollParallax";
 import { StatCounter } from "@/components/StatCounter";
 import { TextMask } from "@/components/TextMask";
 import { TiltFrame } from "@/components/TiltFrame";
+import { getFarmSummary } from "@/lib/bambuddy";
 import { listCatalogMaterials } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { getServerLocale } from "@/lib/i18n/locale";
@@ -14,13 +15,16 @@ import { daysWord, formatTemplate, getDictionary } from "@/lib/i18n/translations
 
 // The home page shows only the first row of the catalog; the rest is on /materials.
 const HOME_MATERIALS = 3;
+// A small order count puts people off more than no count at all; below this the printer farm
+// (from Bambuddy) is shown instead.
+const MIN_ORDERS_TO_SHOW = 50;
 
 export default async function HomePage() {
   const dict = getDictionary(await getServerLocale());
   const { home } = dict;
 
   // Only what can be ordered right now (lib/colorSync.ts) — no out-of-stock plastics.
-  const [materials, ordersCount, showcaseItems] = await Promise.all([
+  const [materials, ordersCount, showcaseItems, reviews, farm] = await Promise.all([
     listCatalogMaterials(),
     prisma.order.count({ where: { status: { not: "DRAFT" } } }),
     prisma.showcaseItem.findMany({
@@ -28,6 +32,12 @@ export default async function HomePage() {
       take: 3,
       select: { id: true, title: true },
     }),
+    prisma.review.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      take: 6,
+      select: { id: true, author: true, text: true, sourceUrl: true },
+    }),
+    getFarmSummary(),
   ]);
   const materialsCount = materials.length;
   const fastestLeadTime = materials.length > 0 ? Math.min(...materials.map((m) => m.leadTimeDays)) : 2;
@@ -53,13 +63,17 @@ export default async function HomePage() {
                       {home.title}
                     </h1>
                   </TextMask>
-                  <div className="mt-8 flex flex-wrap gap-3.5">
+                  <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3.5">
                     <Link
                       href="/order/upload"
                       className="btn bg-[#0b1f0b] text-accent hover:shadow-[0_0_28px_rgba(11,31,11,0.5)]"
                     >
                       {home.cta}
                     </Link>
+                    {/* A plain link: prefetching the route would create the sample file on every page view. */}
+                    <a href="/order/sample" className="font-medium text-[#0b1f0b] underline underline-offset-4 hover:opacity-70">
+                      {home.trySample} →
+                    </a>
                   </div>
                 </Reveal>
               </ScrollParallax>
@@ -142,14 +156,34 @@ export default async function HomePage() {
                   <span className="text-sm text-muted">{home.statsMaterialsLabel}</span>
                 </div>
               </Reveal>
-              <Reveal delayMs={100}>
-                <div className="card flex flex-col gap-1 p-6">
-                  <strong className="text-[30px] text-accent">
-                    <StatCounter target={ordersCount} suffix="+" />
-                  </strong>
-                  <span className="text-sm text-muted">{home.statsOrdersLabel}</span>
-                </div>
-              </Reveal>
+              {ordersCount >= MIN_ORDERS_TO_SHOW ? (
+                <Reveal delayMs={100}>
+                  <div className="card flex flex-col gap-1 p-6">
+                    <strong className="text-[30px] text-accent">
+                      <StatCounter target={ordersCount} suffix="+" />
+                    </strong>
+                    <span className="text-sm text-muted">{home.statsOrdersLabel}</span>
+                  </div>
+                </Reveal>
+              ) : (
+                farm &&
+                farm.total > 0 && (
+                  <Reveal delayMs={100}>
+                    <div className="card flex flex-col gap-1 p-6">
+                      <strong className="text-[30px] text-accent">
+                        <StatCounter target={farm.total} />
+                      </strong>
+                      <span className="text-sm text-muted">{home.statsPrintersLabel}</span>
+                      {farm.printing > 0 && (
+                        <span className="mt-1 flex items-center gap-2 text-xs text-muted">
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+                          {formatTemplate(home.statsPrintingNow, farm.printing)}
+                        </span>
+                      )}
+                    </div>
+                  </Reveal>
+                )
+              )}
               <Reveal delayMs={200}>
                 <div className="card flex flex-col gap-1 p-6">
                   <strong className="text-[30px] text-accent">{fastestLeadTime}</strong>
@@ -162,6 +196,23 @@ export default async function HomePage() {
           </div>
           </section>
         </div>
+
+        <div className="divider" />
+
+        <section className="px-6 py-[100px]">
+          <Reveal>
+            <div className="card mx-auto flex max-w-[1120px] flex-col items-start gap-6 p-8 md:flex-row md:items-center md:justify-between md:p-10">
+              <div className="max-w-[640px]">
+                <span className="tag">{home.noModelTag}</span>
+                <h2 className="mt-4 text-[clamp(24px,3vw,32px)] font-bold text-text">{home.noModelTitle}</h2>
+                <p className="mt-3 text-muted">{home.noModelText}</p>
+              </div>
+              <Link href="/order/request" className="btn btn-primary shrink-0">
+                {home.noModelCta}
+              </Link>
+            </div>
+          </Reveal>
+        </section>
 
         <div className="divider" />
 
@@ -192,10 +243,48 @@ export default async function HomePage() {
           </div>
         </section>
 
+        {reviews.length > 0 && (
+          <>
+            <div className="divider" />
+            <section className="px-6 py-[130px]">
+              <div className="mx-auto max-w-[1120px]">
+                <Reveal>
+                  <span className="tag">{home.reviewsTag}</span>
+                  <h2 className="mt-4 text-[clamp(28px,4vw,40px)] font-bold text-text">{home.reviewsTitle}</h2>
+                </Reveal>
+                <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {reviews.map((review, i) => (
+                    <Reveal key={review.id} delayMs={(i % 3) * 80}>
+                      <figure className="card flex h-full flex-col gap-4 p-6">
+                        <blockquote className="flex-1 whitespace-pre-line text-sm leading-relaxed text-text">
+                          {review.text}
+                        </blockquote>
+                        <figcaption className="flex items-center justify-between gap-3 text-xs text-muted">
+                          <span>{review.author}</span>
+                          {review.sourceUrl && (
+                            <a
+                              href={review.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="transition-colors hover:text-accent"
+                            >
+                              {home.reviewSource}
+                            </a>
+                          )}
+                        </figcaption>
+                      </figure>
+                    </Reveal>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
         <div className="divider" />
 
         <section className="px-6 py-[130px]">
-          <div className="mx-auto grid max-w-md grid-cols-1 gap-5">
+          <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-5 md:grid-cols-3">
             {home.teasers.map((teaser, i) => (
               <Reveal key={teaser.href} delayMs={i * 100}>
                 <Link

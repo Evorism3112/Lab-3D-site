@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import type { Dictionary } from "@/lib/i18n/translations";
+import { showcaseDetails, type ShowcaseCaption } from "@/lib/showcase";
 
-type ShowcaseItemDto = {
+type ShowcaseItemDto = ShowcaseCaption & {
   id: string;
   title: string;
 };
@@ -37,6 +38,9 @@ export function ShowcaseAdmin({
     const body = new FormData();
     body.set("title", title.trim());
     body.set("file", file);
+    for (const name of ["material", "printDays", "priceRub"]) {
+      body.set(name, (form.elements.namedItem(name) as HTMLInputElement).value);
+    }
 
     const res = await fetch("/api/showcase", { method: "POST", body });
     setIsUploading(false);
@@ -77,6 +81,18 @@ export function ShowcaseAdmin({
           />
         </div>
         <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted">{t.workMaterialLabel}</label>
+          <input type="text" name="material" maxLength={100} placeholder="PETG" className="w-36 px-3 py-1.5 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted">{t.workDaysLabel}</label>
+          <input type="number" name="printDays" min={1} className="w-28 px-3 py-1.5 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted">{t.workPriceLabel}</label>
+          <input type="number" name="priceRub" min={1} className="w-32 px-3 py-1.5 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
           <label className="text-xs text-muted">{t.workImageLabel}</label>
           <input type="file" name="file" accept=".jpg,.jpeg,.png,.webp" required />
         </div>
@@ -96,7 +112,10 @@ export function ShowcaseAdmin({
               className="aspect-[4/3] w-full object-cover"
             />
             <div className="flex items-center justify-between gap-2 p-3">
-              <span className="truncate text-sm text-text">{item.title}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm text-text">{item.title}</span>
+                <span className="block truncate text-xs text-muted">{showcaseDetails(item, dict.locale)}</span>
+              </span>
               <button
                 type="button"
                 onClick={() => handleDelete(item.id)}

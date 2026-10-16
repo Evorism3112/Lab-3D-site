@@ -23,9 +23,9 @@ export default async function ContactsPage() {
       <h1 className="text-[clamp(28px,4vw,40px)] font-bold text-text">{t.title}</h1>
       <p className="mt-3 text-muted">{t.subtitle}</p>
 
-      <div className="card mt-8 p-6">
+      <div className="mt-6">
         {hasContacts(contacts) ? (
-          <ContactLinks contacts={contacts} dict={dict} className="text-lg text-muted" />
+          <ContactLinks contacts={contacts} dict={dict} className="text-muted" />
         ) : (
           <p className="text-muted">{t.empty}</p>
         )}

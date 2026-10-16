@@ -154,11 +154,14 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
     <div className="mx-auto max-w-xl px-6 py-16">
       <h1 className="text-2xl font-bold text-text">{t.title}</h1>
 
-      <div className="card mt-6 flex items-baseline justify-between p-4">
-        <span className="text-sm text-muted">{t.orderTotal}</span>
-        <span className="text-xl font-bold text-text">
-          {quote ? formatCents(quote.totalPriceCents, dict.locale) : "…"}
-        </span>
+      <div className="card mt-6 p-4">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm text-muted">{t.orderTotal}</span>
+          <span className="text-xl font-bold text-text">
+            {quote ? `≈ ${formatCents(quote.totalPriceCents, dict.locale)}` : "…"}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-muted">{dict.configure.estimateNote}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">

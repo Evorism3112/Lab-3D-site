@@ -317,7 +317,7 @@ export function ConfigureClient({
               <div className="flex items-baseline justify-between">
                 <span className="text-sm text-muted">{t.estimatedTotal}</span>
                 <span className="text-2xl font-bold text-text">
-                  {quote ? formatCents(quote.totalPriceCents, dict.locale) : isQuoting ? "…" : "—"}
+                  {quote ? `≈ ${formatCents(quote.totalPriceCents, dict.locale)}` : isQuoting ? "…" : "—"}
                 </span>
               </div>
               {quote && (
@@ -330,6 +330,7 @@ export function ConfigureClient({
                     {t.estPrintTime} {formatPrintTime(quote.printHoursTotal, dict.units)} · {t.estPlastic}{" "}
                     {Math.max(1, Math.round(quote.plasticGramsTotal))} {dict.units.g}
                   </p>
+                  <p className="mt-2 text-xs text-muted">{t.estimateNote}</p>
                 </>
               )}
             </>

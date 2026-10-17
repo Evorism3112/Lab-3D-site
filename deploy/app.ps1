@@ -37,6 +37,57 @@ Import-Controls
 
 [void][Lab3D.Native]::SetProcessDPIAware()
 
+# Одно окно на компьютер (после самообновления новое окно ждёт здесь, пока закроется старое).
+# Уже открытое окно этого сеанса просто выводится на передний план. Если его отсюда не видно -
+# завис, потерял окно или открыт в другом сеансе Windows (удалённый рабочий стол, другой
+# пользователь) - предлагаем закрыть его и открыть заново, а не только сообщаем «уже открыто».
+function Get-OtherAppProcess {
+    Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like "*deploy\app.ps1*" -and $_.CommandLine -notlike "*-Snapshot*" } |
+        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue } |
+        Select-Object -First 1
+}
+
+if (-not $Snapshot) {
+    $instance = New-Object Threading.Mutex($false, "Global\Lab3DServerApp")
+    $owned = $false
+    try { $owned = $instance.WaitOne(8000) } catch [Threading.AbandonedMutexException] { $owned = $true }
+    if (-not $owned) {
+        $other = Get-OtherAppProcess
+        $mySession = (Get-Process -Id $PID).SessionId
+        $sameSession = $other -and $other.SessionId -eq $mySession
+        $window = if ($sameSession) { $other.MainWindowHandle } else { [IntPtr]::Zero }
+        $responding = $false
+        if ($sameSession) { try { $responding = $other.Responding } catch { } }
+        if ($window -ne [IntPtr]::Zero -and $responding) {
+            if ([Lab3D.Native]::IsIconic($window)) { [void][Lab3D.Native]::ShowWindowAsync($window, 9) }  # SW_RESTORE
+            [void][Lab3D.Native]::SetForegroundWindow($window)
+            return
+        }
+        $why = "Оно не отвечает или его окно пропало."
+        if (-not $other) { $why = "Его процесс не удалось найти." }
+        elseif (-not $sameSession) { $why = "Оно открыто в другом сеансе Windows (удалённый рабочий стол или другой пользователь)." }
+        $answer = [Windows.Forms.MessageBox]::Show(
+            "Окно управления уже запущено, но здесь его не видно. $why`n`nЗакрыть его и открыть заново? Сайт и начатые операции продолжат работать.",
+            "Лаборатория 3Д", "YesNo", "Warning")
+        if ($answer -ne "Yes") { return }
+        if ($other) {
+            try { Stop-Process -Id $other.Id -Force -ErrorAction Stop }
+            catch {
+                [void][Windows.Forms.MessageBox]::Show(
+                    "Не удалось закрыть старое окно: $($_.Exception.Message)`nЗакройте процесс powershell.exe с deploy\app.ps1 в диспетчере задач или запустите Lab3D.exe от имени администратора.",
+                    "Лаборатория 3Д", "OK", "Error")
+                return
+            }
+        }
+        try { $owned = $instance.WaitOne(10000) } catch [Threading.AbandonedMutexException] { $owned = $true }
+        if (-not $owned) {
+            [void][Windows.Forms.MessageBox]::Show("Старое окно так и не закрылось. Перезагрузите компьютер или завершите его в диспетчере задач.", "Лаборатория 3Д", "OK", "Error")
+            return
+        }
+    }
+}
+
 # Масштаб экрана Windows (125%, 150%...). Шрифты в пунктах растут вместе с ним сами, а координаты и
 # размеры элементов заданы для 100% - их окно пересчитывает само (Form.Scale перед показом).
 # LAB3D_UI_SCALE=1.5 имитирует такой экран на обычном мониторе (тогда растут и шрифты) - для -Snapshot.
@@ -1829,15 +1880,6 @@ if ($Snapshot) {
     [IO.File]::WriteAllText((Join-Path $Snapshot "console.txt"), $console.Text, (New-Object Text.UTF8Encoding($false)))
     $script:ForceClose = $true
     $form.Close()
-    return
-}
-
-# Одно окно на компьютер (после самообновления новое окно ждёт, пока закроется старое).
-$instance = New-Object Threading.Mutex($false, "Global\Lab3DServerApp")
-$owned = $false
-try { $owned = $instance.WaitOne(8000) } catch [Threading.AbandonedMutexException] { $owned = $true }
-if (-not $owned) {
-    [void][Windows.Forms.MessageBox]::Show("Окно управления уже открыто.", "Лаборатория 3Д", "OK", "Information")
     return
 }
 

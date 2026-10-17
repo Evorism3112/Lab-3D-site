@@ -11,11 +11,18 @@ type MaterialForPricing = MaterialPricingRow & {
  * Quote for one material: its stored (or recommended) time/plastic settings + the shared formula.
  * A color with its own spool price (e.g. a composite like ABS-CF15) overrides the material's.
  * `infillPercent` is the customer's slicer infill: it changes the plastic used and — since the
- * printer lays down that plastic — the print time in the same proportion.
+ * printer lays down that plastic — the print time in the same proportion. A slicer result for
+ * this exact model and settings (lib/slicing.ts) replaces both estimates.
  */
 export function computeMaterialPrice(
   material: MaterialForPricing,
-  input: { volumeCm3: number; finishMultiplier?: number; quantity: number; infillPercent?: number },
+  input: {
+    volumeCm3: number;
+    finishMultiplier?: number;
+    quantity: number;
+    infillPercent?: number;
+    sliced?: { printHours: number; plasticGrams: number };
+  },
   color: { spoolPriceCents: number | null } | null | undefined,
   rates: ShopRates,
 ): PricingBreakdown {

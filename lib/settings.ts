@@ -24,6 +24,11 @@ const DEFAULTS = {
   "pricing.laborPerHour": "150",
   "pricing.machinePerHour": "54",
   "pricing.plasticMarkupPercent": "20",
+  /** Slicer quotes (lib/slicing.ts): Bambuddy presets as JSON {source, id, name}; "" = off.
+   *  Filament presets are per material id; a material without one gets an automatic pick. */
+  "slicer.printerPreset": "",
+  "slicer.processPreset": "",
+  "slicer.filamentPresets": "{}",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

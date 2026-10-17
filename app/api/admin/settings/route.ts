@@ -5,6 +5,12 @@ import { auth } from "@/auth";
 import { MAX_PHONES, normalizeVkUrl, parsePhone } from "@/lib/contacts";
 import { setSetting } from "@/lib/settings";
 
+const PresetSchema = z.object({
+  source: z.enum(["orca_cloud", "cloud", "local", "standard"]),
+  id: z.string().min(1).max(300),
+  name: z.string().max(300),
+});
+
 const SettingsSchema = z
   .object({
     minStockGrams: z.number().int().min(0).max(100_000).optional(),
@@ -23,6 +29,14 @@ const SettingsSchema = z
         laborPerHour: z.number().min(0).max(1_000_000),
         machinePerHour: z.number().min(0).max(1_000_000),
         plasticMarkupPercent: z.number().min(0).max(1000),
+      })
+      .optional(),
+    // Slicer quotes (lib/slicing.ts): no printer or process turns them off.
+    slicer: z
+      .object({
+        printer: PresetSchema.nullable(),
+        process: PresetSchema.nullable(),
+        filaments: z.record(z.string(), PresetSchema),
       })
       .optional(),
   })
@@ -65,6 +79,12 @@ export async function PATCH(request: NextRequest) {
     await setSetting("pricing.laborPerHour", String(parsed.data.pricing.laborPerHour));
     await setSetting("pricing.machinePerHour", String(parsed.data.pricing.machinePerHour));
     await setSetting("pricing.plasticMarkupPercent", String(parsed.data.pricing.plasticMarkupPercent));
+  }
+  if (parsed.data.slicer !== undefined) {
+    const { printer, process, filaments } = parsed.data.slicer;
+    await setSetting("slicer.printerPreset", printer ? JSON.stringify(printer) : "");
+    await setSetting("slicer.processPreset", process ? JSON.stringify(process) : "");
+    await setSetting("slicer.filamentPresets", JSON.stringify(filaments));
   }
   return NextResponse.json({ ok: true });
 }

@@ -52,6 +52,10 @@ export type QuoteDTO = {
   materialCostCents: number;
   setupFeeCents: number;
   minPriceFloorApplied: boolean;
+  /** Time and plastic come from the slicer, so the price is exact rather than estimated. */
+  sliced: boolean;
+  /** The slicer is still working on it: ask again in a few seconds for the exact price. */
+  slicing: boolean;
   currency: string;
   leadTimeDays: number;
 };

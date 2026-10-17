@@ -7,6 +7,7 @@ import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
 import { getInfillOptions, getShopRates } from "@/lib/settings";
+import { getSliceResult } from "@/lib/slicing";
 
 const QuoteSchema = z.object({
   fileId: z.string(),
@@ -56,6 +57,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Color is not available for this material" }, { status: 400 });
   }
 
+  // Starts slicing this model when there is no result yet; the client asks again while pending.
+  const slice = await getSliceResult(file, material, infillPercent, scalePercent, { enqueue: true });
+
   try {
     const breakdown = computeMaterialPrice(
       material,
@@ -64,6 +68,7 @@ export async function POST(request: NextRequest) {
         finishMultiplier: finish ? Number(finish.multiplier) : 1,
         quantity,
         infillPercent,
+        sliced: slice.status === "ready" ? slice : undefined,
       },
       color,
       rates,
@@ -72,6 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       quote: {
         ...breakdown,
+        slicing: slice.status === "pending",
         currency: "rub",
         leadTimeDays: material.leadTimeDays,
       },

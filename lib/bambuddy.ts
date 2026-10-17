@@ -1,7 +1,7 @@
 // Bambuddy (github.com/maziggy/bambuddy) runs on the same machine as a Windows service and
 // talks to the Bambu printers over LAN. We only call its REST API from the server, so the
-// API key (Bambuddy → Settings → API Keys, needs printers:read + printers:control + inventory:read) never
-// reaches the browser.
+// API key (Bambuddy → Settings → API Keys, needs printers:read + printers:control + inventory:read,
+// and library:upload + library:read_all + library:delete_all for slicer quotes) never reaches the browser.
 const BAMBUDDY_URL = (process.env.BAMBUDDY_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const BAMBUDDY_API_KEY = process.env.BAMBUDDY_API_KEY;
 const REQUEST_TIMEOUT_MS = 5000;
@@ -36,14 +36,15 @@ export class BambuddyError extends Error {
   }
 }
 
-async function callBambuddy<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function callBambuddy<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   if (!BAMBUDDY_API_KEY) throw new BambuddyError("BAMBUDDY_API_KEY is not configured", 503);
+  const { timeoutMs = REQUEST_TIMEOUT_MS, ...rest } = init;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${BAMBUDDY_URL}/api/v1${path}`, {
-      ...init,
-      headers: { "X-API-Key": BAMBUDDY_API_KEY, ...init.headers },
+      ...rest,
+      headers: { "X-API-Key": BAMBUDDY_API_KEY, ...rest.headers },
       signal: controller.signal,
       cache: "no-store",
     });
@@ -145,6 +146,103 @@ export function getBambuddyPublicUrl(): string {
   } catch {
     return "http://localhost:8000";
   }
+}
+
+// ---- Slicing (Bambuddy library + its OrcaSlicer sidecar, see lib/slicing.ts) ----
+
+/** A slicer preset as Bambuddy lists it; `{source, id}` is what a slice request refers to. */
+export type SlicerPreset = {
+  id: string;
+  name: string;
+  source: "orca_cloud" | "cloud" | "local" | "standard";
+  filament_type: string | null;
+  compatible_printers: string[] | null;
+};
+type PresetSlots = { printer: SlicerPreset[]; process: SlicerPreset[]; filament: SlicerPreset[] };
+export type SlicerPresets = PresetSlots;
+
+/** Presets of every tier, in Bambuddy's priority order (local, Orca Cloud, Bambu Cloud, standard). */
+export async function listSlicerPresets(): Promise<SlicerPresets> {
+  const res = await callBambuddy<Record<"local" | "orca_cloud" | "cloud" | "standard", PresetSlots>>("/slicer/presets", {
+    timeoutMs: 30_000,
+  });
+  const tiers = [res.local, res.orca_cloud, res.cloud, res.standard];
+  return {
+    printer: tiers.flatMap((t) => t?.printer ?? []),
+    process: tiers.flatMap((t) => t?.process ?? []),
+    filament: tiers.flatMap((t) => t?.filament ?? []),
+  };
+}
+
+type LibraryFolder = { id: number; name: string; parent_id: number | null };
+
+/** Id of a top-level library folder with this name, created when missing. */
+export async function ensureLibraryFolder(name: string): Promise<number> {
+  const folders = await callBambuddy<LibraryFolder[]>("/library/folders");
+  const found = folders.find((f) => f.name === name && f.parent_id === null);
+  if (found) return found.id;
+  const created = await callBambuddy<LibraryFolder>("/library/folders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return created.id;
+}
+
+export async function uploadLibraryFile(content: Buffer, filename: string, folderId: number): Promise<number> {
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(content)]), filename);
+  const res = await callBambuddy<{ id: number }>(`/library/files?folder_id=${folderId}&generate_stl_thumbnails=false`, {
+    method: "POST",
+    body: form,
+    timeoutMs: 120_000,
+  });
+  return res.id;
+}
+
+/** Moves a library file to Bambuddy's trash, which it empties by itself. */
+export async function deleteLibraryFile(fileId: number): Promise<void> {
+  await callBambuddy(`/library/files/${fileId}`, { method: "DELETE" });
+}
+
+export type PresetRef = { source: SlicerPreset["source"]; id: string };
+
+export type SliceOptions = {
+  printer: PresetRef;
+  process: PresetRef;
+  filament: PresetRef;
+  /** Slicer infill, %. */
+  infillPercent: number;
+};
+
+/** Queues a slice of a library file; the result is polled with getSliceJob. */
+export async function startSlice(fileId: number, options: SliceOptions): Promise<number> {
+  const res = await callBambuddy<{ job_id: number }>(`/library/files/${fileId}/slice`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      printer_preset: options.printer,
+      process_preset: options.process,
+      filament_preset: options.filament,
+      process_overrides: { sparse_infill_density: `${options.infillPercent}%` },
+      // A customer's STL can sit anywhere in its coordinates: put it on the plate.
+      auto_arrange: true,
+    }),
+    timeoutMs: 120_000,
+  });
+  return res.job_id;
+}
+
+export type SliceJob =
+  | { status: "pending" | "running" }
+  | {
+      status: "completed";
+      result: { library_file_id: number; print_time_seconds: number; filament_used_g: number };
+    }
+  | { status: "failed"; error_detail: string | null };
+
+export async function getSliceJob(jobId: number): Promise<SliceJob> {
+  return callBambuddy<SliceJob>(`/slice-jobs/${jobId}`);
 }
 
 const FARM_SUMMARY_TTL_MS = 60_000;

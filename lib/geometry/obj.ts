@@ -1,15 +1,15 @@
 import { TriangleAccumulator } from "./accumulator";
-import { GeometryParseError, type GeometryStats } from "./types";
+import { GeometryParseError, type GeometryStats, type TriangleSink } from "./types";
 
 function resolveIndex(raw: number, vertexCount: number): number {
   // OBJ indices are 1-based; negative indices are relative to the current end of the vertex list.
   return raw > 0 ? raw - 1 : vertexCount + raw;
 }
 
-export function parseOBJ(buffer: Buffer): GeometryStats {
+/** Feeds every (fan-triangulated) face of an OBJ to `acc`. */
+export function walkOBJ(buffer: Buffer, acc: TriangleSink): void {
   const text = buffer.toString("utf8");
   const vertices: number[][] = [];
-  const acc = new TriangleAccumulator();
 
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
@@ -45,7 +45,11 @@ export function parseOBJ(buffer: Buffer): GeometryStats {
       }
     }
   }
+}
 
+export function parseOBJ(buffer: Buffer): GeometryStats {
+  const acc = new TriangleAccumulator();
+  walkOBJ(buffer, acc);
   try {
     return acc.finish();
   } catch {

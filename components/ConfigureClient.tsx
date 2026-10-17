@@ -50,6 +50,8 @@ export function ConfigureClient({
   const [quote, setQuote] = useState<QuoteDTO | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
+  // Bumped to ask for the quote again while the slicer works on the exact price.
+  const [pollTick, setPollTick] = useState(0);
 
   const colorId = resolveSelection(selectedColorId, material?.colors ?? []);
   const colorGroups = useMemo(() => {
@@ -93,7 +95,13 @@ export function ConfigureClient({
     }, 250);
 
     return () => clearTimeout(timeout);
-  }, [file.id, material, colorId, finishId, quantity, scale, infill]);
+  }, [file.id, material, colorId, finishId, quantity, scale, infill, pollTick]);
+
+  useEffect(() => {
+    if (!quote?.slicing) return;
+    const timeout = setTimeout(() => setPollTick((n) => n + 1), 3000);
+    return () => clearTimeout(timeout);
+  }, [quote]);
 
   if (!material) {
     return <p className="mx-auto max-w-2xl px-6 py-24 text-muted">{t.noMaterials}</p>;
@@ -315,9 +323,13 @@ export function ConfigureClient({
           {!quoteError && (
             <>
               <div className="flex items-baseline justify-between">
-                <span className="text-sm text-muted">{t.estimatedTotal}</span>
+                <span className="text-sm text-muted">{quote?.sliced ? t.slicedTotal : t.estimatedTotal}</span>
                 <span className="text-2xl font-bold text-text">
-                  {quote ? `≈ ${formatCents(quote.totalPriceCents, dict.locale)}` : isQuoting ? "…" : "—"}
+                  {quote
+                    ? `${quote.sliced ? "" : "≈ "}${formatCents(quote.totalPriceCents, dict.locale)}`
+                    : isQuoting
+                      ? "…"
+                      : "—"}
                 </span>
               </div>
               {quote && (
@@ -327,10 +339,13 @@ export function ConfigureClient({
                     {formatTemplate(t.shipsIn, formatDays(quote.leadTimeDays, dict.locale))}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {t.estPrintTime} {formatPrintTime(quote.printHoursTotal, dict.units)} · {t.estPlastic}{" "}
-                    {Math.max(1, Math.round(quote.plasticGramsTotal))} {dict.units.g}
+                    {quote.sliced ? t.printTime : t.estPrintTime} {formatPrintTime(quote.printHoursTotal, dict.units)} ·{" "}
+                    {quote.sliced ? t.plastic : t.estPlastic} {Math.max(1, Math.round(quote.plasticGramsTotal))}{" "}
+                    {dict.units.g}
                   </p>
-                  <p className="mt-2 text-xs text-muted">{t.estimateNote}</p>
+                  <p className="mt-2 text-xs text-muted">
+                    {quote.sliced ? t.slicedNote : quote.slicing ? t.slicingNote : t.estimateNote}
+                  </p>
                 </>
               )}
             </>

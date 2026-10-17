@@ -142,7 +142,23 @@ model UploadedFile {
   triangleCount  Int?
   createdAt      DateTime   @default(now())
 
-  orderItems OrderItem[]
+  orderItems     OrderItem[]
+  sliceEstimates SliceEstimate[]
+}
+
+// What the slicer (OrcaSlicer via Bambuddy) says one piece of a model takes, per combination of
+// slicer settings (lib/slicing.ts sliceKey). Without a row quotes use the volume-based estimate.
+model SliceEstimate {
+  id            String   @id @default(cuid())
+  fileId        String
+  key           String
+  printSeconds  Int
+  filamentGrams Decimal  @db.Decimal(12, 3)
+  createdAt     DateTime @default(now())
+
+  file UploadedFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, key])
 }
 
 model ShowcaseItem {

@@ -2,6 +2,7 @@ import { BambuddyColorsAdmin } from "@/components/BambuddyColorsAdmin";
 import { InfillLevelsAdmin } from "@/components/InfillLevelsAdmin";
 import { PricingAdmin } from "@/components/PricingAdmin";
 import { ShopRatesAdmin } from "@/components/ShopRatesAdmin";
+import { SlicerAdmin } from "@/components/SlicerAdmin";
 import { isBambuddyConfigured } from "@/lib/bambuddy";
 import { ensureColorsFresh, getColorAvailability, isColorAvailable } from "@/lib/colorSync";
 import { prisma } from "@/lib/db";
@@ -10,6 +11,7 @@ import { localizeCatalogText } from "@/lib/i18n/catalog";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
 import { resolvePricing } from "@/lib/pricing/defaults";
+import { getSliceConfig } from "@/lib/slicing";
 
 export default async function AdminPricingPage() {
   const dict = getDictionary(await getServerLocale());
@@ -17,7 +19,7 @@ export default async function AdminPricingPage() {
 
   // Also kicks off the periodic Bambuddy sync, so the stock numbers below are fresh.
   await ensureColorsFresh();
-  const [materials, availability, settings, infill, rates] = await Promise.all([
+  const [materials, availability, settings, infill, rates, slicer] = await Promise.all([
     prisma.material.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -29,6 +31,7 @@ export default async function AdminPricingPage() {
     getSettings(["bambuddy.lastSyncAt", "bambuddy.lastSyncError"]),
     getInfillOptions(),
     getShopRates(),
+    getSliceConfig(),
   ]);
 
   return (
@@ -46,6 +49,16 @@ export default async function AdminPricingPage() {
       </div>
       <div className="mt-5">
         <ShopRatesAdmin dict={dict} rates={rates} />
+      </div>
+      <div className="mt-5">
+        <SlicerAdmin
+          dict={dict}
+          configured={isBambuddyConfigured()}
+          materials={materials.map((m) => ({ id: m.id, name: m.name, slug: m.slug }))}
+          printer={slicer?.printer ?? null}
+          process={slicer?.process ?? null}
+          filaments={slicer?.filaments ?? {}}
+        />
       </div>
       <div className="mt-5">
         <InfillLevelsAdmin dict={dict} levels={infill.levels} defaultLevel={infill.defaultLevel} />

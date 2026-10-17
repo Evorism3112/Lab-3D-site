@@ -97,6 +97,14 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestKey, quote]);
 
+  // Asked again while the slicer works on the exact price, so the order goes out at the price shown.
+  const [pollTick, setPollTick] = useState(0);
+  useEffect(() => {
+    if (!quote?.slicing) return;
+    const timeout = setTimeout(() => setPollTick((n) => n + 1), 3000);
+    return () => clearTimeout(timeout);
+  }, [quote, pollTick]);
+
   useEffect(() => {
     if (!fileId || !materialId) return;
     fetch("/api/quote", {
@@ -105,9 +113,10 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
       body: JSON.stringify({ fileId, materialId, colorId, finishId, quantity, scalePercent, infillPercent }),
     })
       .then((res) => res.json())
-      .then((data) => setQuote(data.quote))
+      // An unchanged quote keeps its object, so polling doesn't re-run the delivery estimate.
+      .then((data) => setQuote((prev) => (JSON.stringify(prev) === JSON.stringify(data.quote) ? prev : data.quote)))
       .catch(() => setError("Failed to load quote"));
-  }, [fileId, materialId, colorId, finishId, quantity, scalePercent, infillPercent]);
+  }, [fileId, materialId, colorId, finishId, quantity, scalePercent, infillPercent, pollTick]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,10 +167,16 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
         <div className="flex items-baseline justify-between">
           <span className="text-sm text-muted">{t.orderTotal}</span>
           <span className="text-xl font-bold text-text">
-            {quote ? `≈ ${formatCents(quote.totalPriceCents, dict.locale)}` : "…"}
+            {quote ? `${quote.sliced ? "" : "≈ "}${formatCents(quote.totalPriceCents, dict.locale)}` : "…"}
           </span>
         </div>
-        <p className="mt-2 text-xs text-muted">{dict.configure.estimateNote}</p>
+        <p className="mt-2 text-xs text-muted">
+          {quote?.sliced
+            ? dict.configure.slicedNote
+            : quote?.slicing
+              ? dict.configure.slicingNote
+              : dict.configure.estimateNote}
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">

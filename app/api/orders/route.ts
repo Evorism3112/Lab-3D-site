@@ -12,6 +12,7 @@ import { computeMaterialPrice } from "@/lib/pricing/material";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
 import { getInfillOptions, getShopRates } from "@/lib/settings";
 import { serializeOrder } from "@/lib/serializers";
+import { getSliceResult } from "@/lib/slicing";
 
 const OrderStatusValues = Object.values(OrderStatus) as [string, ...string[]];
 
@@ -97,6 +98,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Infill level is not available" }, { status: 400 });
     }
 
+    // The slicer's result when it is ready — the same one the quote showed; never waits for it.
+    const slice = await getSliceResult(file, material, infillPercent, item.scalePercent, { enqueue: false });
+
     try {
       const breakdown = computeMaterialPrice(
         material,
@@ -105,6 +109,7 @@ export async function POST(request: NextRequest) {
           finishMultiplier: finish ? Number(finish.multiplier) : 1,
           quantity: item.quantity,
           infillPercent,
+          sliced: slice.status === "ready" ? slice : undefined,
         },
         color,
         rates,

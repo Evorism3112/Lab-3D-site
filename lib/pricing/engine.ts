@@ -18,6 +18,8 @@ export type PricingInput = {
   finishMultiplier?: number;
   /** Markup on the plastic over its spool price, %. Defaults to 0. */
   plasticMarkupPercent?: number;
+  /** What the slicer says one piece takes; replaces the volume-based time and plastic estimate. */
+  sliced?: { printHours: number; plasticGrams: number };
   quantity: number;
 };
 
@@ -35,14 +37,16 @@ export type PricingBreakdown = {
   printHoursTotal: number;
   /** Estimated plastic use for the whole order, grams. */
   plasticGramsTotal: number;
+  /** Time and plastic come from the slicer rather than from the model volume. */
+  sliced: boolean;
 };
 
 /**
  * Pure pricing function shared by the live quote endpoint and order creation,
  * so a quoted price can never drift from the price actually charged.
  *
- * hours    = volume / printSpeed
- * grams    = volume * infill% * density
+ * hours    = volume / printSpeed       (or the slicer's time)
+ * grams    = volume * infill% * density (or the slicer's plastic)
  * subtotal = (hours * hourlyRate + grams * spoolPrice / spoolWeight * (1 + markup%)) * finishMultiplier
  * unitPrice = max(minPrice, subtotal) + setupFee
  */
@@ -70,8 +74,9 @@ export function computePrice(input: PricingInput): PricingBreakdown {
     throw new PricingError("quantity must be a positive integer");
   }
 
-  const printHoursPerUnit = volumeCm3 / printSpeedCm3PerHour;
-  const plasticGramsPerUnit = ((volumeCm3 * infillPercent) / 100) * densityGcm3;
+  const { sliced } = input;
+  const printHoursPerUnit = sliced ? sliced.printHours : volumeCm3 / printSpeedCm3PerHour;
+  const plasticGramsPerUnit = sliced ? sliced.plasticGrams : ((volumeCm3 * infillPercent) / 100) * densityGcm3;
 
   const timeCostCents = Math.round(printHoursPerUnit * hourlyRateCents * finishMultiplier);
   const plasticCostCents = Math.round(
@@ -92,5 +97,6 @@ export function computePrice(input: PricingInput): PricingBreakdown {
     printHoursPerUnit,
     printHoursTotal: printHoursPerUnit * quantity,
     plasticGramsTotal: plasticGramsPerUnit * quantity,
+    sliced: Boolean(sliced),
   };
 }

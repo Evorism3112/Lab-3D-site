@@ -5,3 +5,12 @@ export type GeometryStats = {
 };
 
 export class GeometryParseError extends Error {}
+
+/** Receives the triangles of a mesh one by one (vertex coordinates in mm). */
+export interface TriangleSink {
+  addTriangle(
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    cx: number, cy: number, cz: number,
+  ): void;
+}

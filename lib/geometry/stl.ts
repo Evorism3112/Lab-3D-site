@@ -1,5 +1,5 @@
 import { TriangleAccumulator } from "./accumulator";
-import { GeometryParseError, type GeometryStats } from "./types";
+import { GeometryParseError, type GeometryStats, type TriangleSink } from "./types";
 
 const HEADER_SIZE = 80;
 const TRIANGLE_COUNT_SIZE = 4;
@@ -19,9 +19,8 @@ function isBinarySTL(buffer: Buffer): boolean {
   return !/^\s*solid\b/i.test(head);
 }
 
-function parseBinarySTL(buffer: Buffer): GeometryStats {
+function walkBinarySTL(buffer: Buffer, acc: TriangleSink): void {
   const triangleCount = buffer.readUInt32LE(HEADER_SIZE);
-  const acc = new TriangleAccumulator();
   let offset = HEADER_SIZE + TRIANGLE_COUNT_SIZE;
 
   for (let i = 0; i < triangleCount; i++) {
@@ -39,12 +38,9 @@ function parseBinarySTL(buffer: Buffer): GeometryStats {
 
     acc.addTriangle(ax, ay, az, bx, by, bz, cx, cy, cz);
   }
-
-  return acc.finish();
 }
 
-function parseAsciiSTL(text: string): GeometryStats {
-  const acc = new TriangleAccumulator();
+function walkAsciiSTL(text: string, acc: TriangleSink): void {
   const vertexRe = /vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g;
   const matches = [...text.matchAll(vertexRe)].map((m) => [
     parseFloat(m[1]),
@@ -62,20 +58,30 @@ function parseAsciiSTL(text: string): GeometryStats {
     const [cx, cy, cz] = matches[i + 2];
     acc.addTriangle(ax, ay, az, bx, by, bz, cx, cy, cz);
   }
-
-  return acc.finish();
 }
 
-export function parseSTL(buffer: Buffer): GeometryStats {
+/** Feeds every triangle of a binary or ASCII STL to `sink`. */
+export function walkSTL(buffer: Buffer, sink: TriangleSink): void {
   try {
     if (isBinarySTL(buffer)) {
-      return parseBinarySTL(buffer);
+      walkBinarySTL(buffer, sink);
+    } else {
+      walkAsciiSTL(buffer.toString("utf8"), sink);
     }
-    return parseAsciiSTL(buffer.toString("utf8"));
   } catch (err) {
     if (err instanceof GeometryParseError) throw err;
     throw new GeometryParseError(
       `Failed to parse STL file: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+}
+
+export function parseSTL(buffer: Buffer): GeometryStats {
+  const acc = new TriangleAccumulator();
+  walkSTL(buffer, acc);
+  try {
+    return acc.finish();
+  } catch (err) {
+    throw new GeometryParseError(`Failed to parse STL file: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

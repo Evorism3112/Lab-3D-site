@@ -100,7 +100,7 @@ try {
     else {
         # Без профилей принтера проверка грубая: провал - повод проверить, а не обязательно поломка.
         Write-Warn ("Тестовый кубик не нарезался (код {0})." -f $(if ($slice.HasExited) { $slice.ExitCode } else { "таймаут" }))
-        Write-Warn "Проверьте нарезку кнопкой Slice в Bambuddy. Если и там ошибка, сайт будет показывать примерную цену."
+        Write-Warn "Проверьте нарезку в Bambuddy: Файловый менеджер -> у файла кнопка «Нарезать» (шестерёнка). Если и там ошибка, сайт будет показывать примерную цену."
     }
 
     [IO.File]::WriteAllText($script:SlicerVersionFile, (Get-SlicerVersionTag))
@@ -126,7 +126,7 @@ if (Get-ServerState) {
 else { Write-Ok "Слайсер запустится вместе с сервером." }
 Write-Host ""
 Write-Host "  Готово. Осталось:" -ForegroundColor Green
-Write-Host "    1. Bambuddy -> Settings -> Slicer: выбрать OrcaSlicer, адрес http://127.0.0.1:$($script:SlicerPort)"
+Write-Host "    1. Bambuddy -> Настройки -> Очередь -> «Слайсер»: слайсер OrcaSlicer, включить «Использовать API слайсера», адрес http://127.0.0.1:$($script:SlicerPort)"
 if ($needsKeyFlag) { Write-Host "    2. Создать ключ API в Bambuddy (Read status, Control printer, Manage library) и вписать его на вкладке «Принтеры»" }
 else { Write-Host "    2. У ключа API в Bambuddy должно быть включено «Manage library»" }
 Write-Host "    3. Админка сайта: Цены -> «Точная цена через слайсер» - выбрать принтер и процесс"

@@ -279,8 +279,9 @@ $script:SlicerBambuVersion = "02.08.02.61"
 # Метка сборки из имени архива релиза - по версии её не вывести.
 $script:SlicerBambuBuild = "20260820225108"
 $script:SlicerApiCommit = "4c05506e40a0057db33234837db164143cbf3ad3"   # ветка bambuddy/profile-resolver
-# Порт, на котором Bambuddy по умолчанию ищет Bambu Studio (его docker-compose).
-$script:SlicerPort = 3001
+# Bambuddy по умолчанию ищет Bambu Studio на 3001, но там CRM - берём 3003 (порт его OrcaSlicer),
+# а адрес в Bambuddy вписываем вручную.
+$script:SlicerPort = 3003
 $script:SlicerExe = Join-Path $script:SlicerDir "bambu\bambu-studio.exe"
 $script:SlicerApiDir = Join-Path $script:SlicerDir "api"
 $script:SlicerApiEntry = Join-Path $script:SlicerApiDir "dist\src\index.js"

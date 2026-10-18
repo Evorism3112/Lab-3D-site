@@ -9,7 +9,7 @@
 .NOTES
   Версии закреплены в lib.ps1. Работающий сервер подхватывает слайсер сам (start.ps1),
   перезапускать сайт не нужно. В конце скрипт проверяет, что Bambu Studio режет из командной
-  строки. В Bambuddy Bambu Studio на 127.0.0.1:3001 выбран по умолчанию.
+  строки; адрес слайсера (127.0.0.1:3003) в Bambuddy нужно вписать вручную (ключам API это запрещено).
 #>
 
 . (Join-Path $PSScriptRoot "lib.ps1")
@@ -114,8 +114,8 @@ finally {
     Remove-Item $download -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Bambuddy по умолчанию режет через Bambu Studio на 127.0.0.1:3001; менять его настройки ключам API
-# запрещено, так что если там выбрано другое - поправить нужно вручную.
+# Bambuddy по умолчанию ищет Bambu Studio на 3001 (у нас там CRM), а менять его настройки ключам API
+# запрещено - адрес вписывается вручную.
 $needsKeyFlag = -not $config["BAMBUDDY_API_KEY"]
 if (Get-ServerState) {
     Write-Step "Запуск слайсера"
@@ -130,7 +130,7 @@ if (Get-ServerState) {
 else { Write-Ok "Слайсер запустится вместе с сервером." }
 Write-Host ""
 Write-Host "  Готово. Осталось:" -ForegroundColor Green
-Write-Host "    1. Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер»: слайсер Bambu Studio, включить «Использовать API слайсера», адрес пустой или http://127.0.0.1:$($script:SlicerPort)"
+Write-Host "    1. Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер»: слайсер Bambu Studio, включить «Использовать API слайсера», адрес http://127.0.0.1:$($script:SlicerPort)"
 if ($needsKeyFlag) { Write-Host "    2. Создать ключ API в Bambuddy (Read status, Control printer, Manage library) и вписать его на вкладке «Принтеры»" }
 else { Write-Host "    2. У ключа API в Bambuddy должно быть включено «Manage library»" }
 Write-Host "    3. Админка сайта: Цены -> «Точная цена через слайсер» - выбрать принтер и процесс (после смены слайсера - заново)"

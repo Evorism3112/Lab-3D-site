@@ -9,7 +9,7 @@ import pg from "pg";
 
 const deployDir = path.dirname(fileURLToPath(import.meta.url));
 const resultFile = path.join(deployDir, "slicer", "last-test.json");
-const slicerPort = Number(process.env.SLICER_PORT || 3001);
+const slicerPort = Number(process.env.SLICER_PORT || 3003);
 const bambuddy = (process.env.BAMBUDDY_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const apiKey = process.env.BAMBUDDY_API_KEY;
 const LIBRARY_FOLDER = "Расчёт цены (сайт)";
@@ -90,10 +90,12 @@ if (settings.preferred_slicer && settings.preferred_slicer !== "bambu_studio") {
   await fail("В Bambuddy выбран не Bambu Studio: Настройки -> Рабочий процесс -> «Слайсер» -> Предпочитаемый слайсер: Bambu Studio.");
 }
 const sidecarUrl = (settings.bambu_studio_api_url || "").replace(/\/$/, "");
-if (sidecarUrl && !/^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(sidecarUrl)) warn(`адрес слайсера в Bambuddy: ${sidecarUrl}`);
-else if (sidecarUrl && !sidecarUrl.endsWith(`:${slicerPort}`)) await fail(`В Bambuddy адрес слайсера ${sidecarUrl}, а нужен http://127.0.0.1:${slicerPort}.`);
+// Bambuddy's default for Bambu Studio is :3001, which the CRM uses, so the address must be set.
+if (!sidecarUrl) await fail(`В Bambuddy не задан адрес слайсера (по умолчанию он ищет :3001, там CRM): впишите http://127.0.0.1:${slicerPort}.`);
+if (!/^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(sidecarUrl)) warn(`адрес слайсера в Bambuddy: ${sidecarUrl}`);
+else if (!sidecarUrl.endsWith(`:${slicerPort}`)) await fail(`В Bambuddy адрес слайсера ${sidecarUrl}, а нужен http://127.0.0.1:${slicerPort}.`);
 if (!settings.use_slicer_api) warn("«Использовать API слайсера» выключено: сайту это не мешает, но в самом Bambuddy кнопки «Нарезать» не будет.");
-ok(`режет через Bambu Studio (${sidecarUrl || `http://localhost:${slicerPort}`})`);
+ok(`режет через Bambu Studio (${sidecarUrl})`);
 
 // 3. Presets: the ones chosen in the site admin, otherwise a common Bambu Lab set.
 step("3. Профили");

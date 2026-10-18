@@ -148,7 +148,7 @@ export function getBambuddyPublicUrl(): string {
   }
 }
 
-// ---- Slicing (Bambuddy library + its OrcaSlicer sidecar, see lib/slicing.ts) ----
+// ---- Slicing (Bambuddy library + its Bambu Studio sidecar, see lib/slicing.ts) ----
 
 /** A slicer preset as Bambuddy lists it; `{source, id}` is what a slice request refers to. */
 export type SlicerPreset = {

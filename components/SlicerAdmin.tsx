@@ -15,7 +15,7 @@ const sourceLabel: Record<SlicerPreset["source"], string> = {
   local: "Bambuddy",
   orca_cloud: "Orca Cloud",
   cloud: "Bambu Cloud",
-  standard: "OrcaSlicer",
+  standard: "Bambu Studio",
 };
 
 // Slicer quotes (lib/slicing.ts): the Bambuddy presets the models are sliced with.

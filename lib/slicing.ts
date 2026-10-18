@@ -20,7 +20,7 @@ import { pickFilamentPreset, type NamedPresetRef } from "@/lib/slicerPresets";
 import { storage } from "@/lib/storage";
 
 // Exact print time and plastic from the slicer: the model goes to the Bambuddy library, its
-// OrcaSlicer sidecar slices it with the admin's presets, and both files are deleted right after.
+// Bambu Studio sidecar slices it with the admin's presets, and both files are deleted right after.
 // A slice takes seconds to minutes, so quotes show the volume-based estimate until it is done
 // (the configurator polls), and the result is kept per model + settings in SliceEstimate.
 

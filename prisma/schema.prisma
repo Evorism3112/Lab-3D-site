@@ -146,7 +146,7 @@ model UploadedFile {
   sliceEstimates SliceEstimate[]
 }
 
-// What the slicer (OrcaSlicer via Bambuddy) says one piece of a model takes, per combination of
+// What the slicer (Bambu Studio via Bambuddy) says one piece of a model takes, per combination of
 // slicer settings (lib/slicing.ts sliceKey). Without a row quotes use the volume-based estimate.
 model SliceEstimate {
   id            String   @id @default(cuid())

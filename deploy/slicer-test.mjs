@@ -9,7 +9,7 @@ import pg from "pg";
 
 const deployDir = path.dirname(fileURLToPath(import.meta.url));
 const resultFile = path.join(deployDir, "slicer", "last-test.json");
-const slicerPort = Number(process.env.SLICER_PORT || 3003);
+const slicerPort = Number(process.env.SLICER_PORT || 3001);
 const bambuddy = (process.env.BAMBUDDY_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const apiKey = process.env.BAMBUDDY_API_KEY;
 const LIBRARY_FOLDER = "Расчёт цены (сайт)";
@@ -72,9 +72,10 @@ const health = await fetch(`http://127.0.0.1:${slicerPort}/health`, { signal: Ab
   .then((r) => r.json())
   .catch(() => null);
 if (!health) await fail("Не отвечает. Запущен ли сервер? Подробности - в логе слайсера.");
-if (!health.checks?.orcaslicer?.available) await fail(`OrcaSlicer не запускается: ${health.checks?.orcaslicer?.error ?? "нет подробностей"}`);
+// The wrapper names its check "orcaslicer" whatever binary it runs.
+if (!health.checks?.orcaslicer?.available) await fail(`Bambu Studio не запускается: ${health.checks?.orcaslicer?.error ?? "нет подробностей"}`);
 if (!health.checks?.dataPath?.accessible) await fail(`Нет доступа к папке данных слайсера: ${health.checks?.dataPath?.error ?? ""}`);
-ok("отвечает, OrcaSlicer найден");
+ok("отвечает, Bambu Studio найден");
 
 // 2. Bambuddy: the key and which slicer it sends slices to.
 step("2. Bambuddy");
@@ -85,14 +86,14 @@ try {
 } catch (err) {
   await fail(`${err.message}. У ключа должно быть включено «Read status».`);
 }
-if (settings.preferred_slicer !== "orcaslicer") {
-  await fail("В Bambuddy выбран не OrcaSlicer: Настройки -> Очередь -> «Слайсер» -> Предпочитаемый слайсер: OrcaSlicer.");
+if (settings.preferred_slicer && settings.preferred_slicer !== "bambu_studio") {
+  await fail("В Bambuddy выбран не Bambu Studio: Настройки -> Рабочий процесс -> «Слайсер» -> Предпочитаемый слайсер: Bambu Studio.");
 }
-const sidecarUrl = (settings.orcaslicer_api_url || "").replace(/\/$/, "");
+const sidecarUrl = (settings.bambu_studio_api_url || "").replace(/\/$/, "");
 if (sidecarUrl && !/^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(sidecarUrl)) warn(`адрес слайсера в Bambuddy: ${sidecarUrl}`);
 else if (sidecarUrl && !sidecarUrl.endsWith(`:${slicerPort}`)) await fail(`В Bambuddy адрес слайсера ${sidecarUrl}, а нужен http://127.0.0.1:${slicerPort}.`);
 if (!settings.use_slicer_api) warn("«Использовать API слайсера» выключено: сайту это не мешает, но в самом Bambuddy кнопки «Нарезать» не будет.");
-ok(`режет через OrcaSlicer (${sidecarUrl || `http://localhost:${slicerPort}`})`);
+ok(`режет через Bambu Studio (${sidecarUrl || `http://localhost:${slicerPort}`})`);
 
 // 3. Presets: the ones chosen in the site admin, otherwise a common Bambu Lab set.
 step("3. Профили");

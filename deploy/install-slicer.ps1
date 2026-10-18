@@ -9,7 +9,7 @@
 .NOTES
   Версии закреплены в lib.ps1. Работающий сервер подхватывает слайсер сам (start.ps1),
   перезапускать сайт не нужно. В конце скрипт проверяет, что OrcaSlicer режет из командной
-  строки, и прописывает слайсер в настройки Bambuddy (если ключу API это разрешено).
+  строки; выбрать OrcaSlicer в настройках Bambuddy нужно вручную (ключам API это запрещено).
 #>
 
 . (Join-Path $PSScriptRoot "lib.ps1")
@@ -110,23 +110,9 @@ finally {
     Remove-Item $download -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Bambuddy ищет OrcaSlicer на 127.0.0.1:3003 по умолчанию, но слайсером по умолчанию у него
-# Bambu Studio - переключаем. Нужен ключ с правом settings:update, иначе - вручную.
-Write-Step "Настройка Bambuddy"
-$bambuddyUrl = if ($config["BAMBUDDY_URL"]) { $config["BAMBUDDY_URL"].TrimEnd("/") } else { "http://127.0.0.1:8000" }
-$apiKey = $config["BAMBUDDY_API_KEY"]
-$manual = "В Bambuddy: Settings -> Slicer - выберите OrcaSlicer и адрес http://127.0.0.1:$($script:SlicerPort)"
-if (-not $apiKey) { Write-Warn "BAMBUDDY_API_KEY не задан. $manual" }
-else {
-    try {
-        $body = @{ preferred_slicer = "orcaslicer"; orcaslicer_api_url = "http://127.0.0.1:$($script:SlicerPort)"; use_slicer_api = $true } | ConvertTo-Json -Compress
-        Invoke-RestMethod -Method Patch -Uri "$bambuddyUrl/api/v1/settings" -Headers @{ "X-API-Key" = $apiKey } `
-            -ContentType "application/json" -Body $body -TimeoutSec 15 | Out-Null
-        Write-Ok "Bambuddy режет через OrcaSlicer на 127.0.0.1:$($script:SlicerPort)."
-    }
-    catch { Write-Warn "Не удалось изменить настройки Bambuddy ($($_.Exception.Message)). $manual" }
-}
-
+# Bambuddy по умолчанию ищет OrcaSlicer именно на 127.0.0.1:3003, но режет через Bambu Studio,
+# а менять его настройки ключам API запрещено - выбрать OrcaSlicer нужно один раз вручную.
+$needsKeyFlag = -not $config["BAMBUDDY_API_KEY"]
 if (Get-ServerState) {
     Write-Step "Запуск слайсера"
     $up = $false
@@ -139,4 +125,8 @@ if (Get-ServerState) {
 }
 else { Write-Ok "Слайсер запустится вместе с сервером." }
 Write-Host ""
-Write-Host "  Готово. Осталось выбрать профили в админке сайта: Цены -> «Точная цена через слайсер»." -ForegroundColor Green
+Write-Host "  Готово. Осталось:" -ForegroundColor Green
+Write-Host "    1. Bambuddy -> Settings -> Slicer: выбрать OrcaSlicer, адрес http://127.0.0.1:$($script:SlicerPort)"
+if ($needsKeyFlag) { Write-Host "    2. Создать ключ API в Bambuddy (Read status, Control printer, Manage library) и вписать его на вкладке «Принтеры»" }
+else { Write-Host "    2. У ключа API в Bambuddy должно быть включено «Manage library»" }
+Write-Host "    3. Админка сайта: Цены -> «Точная цена через слайсер» - выбрать принтер и процесс"

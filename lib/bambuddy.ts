@@ -1,7 +1,7 @@
 // Bambuddy (github.com/maziggy/bambuddy) runs on the same machine as a Windows service and
 // talks to the Bambu printers over LAN. We only call its REST API from the server, so the
-// API key (Bambuddy → Settings → API Keys, needs printers:read + printers:control + inventory:read,
-// and library:upload + library:read_all + library:delete_all for slicer quotes) never reaches the browser.
+// API key (Bambuddy → Settings → API Keys with "Read status" and "Control printer", plus "Manage
+// library" for slicer quotes) never reaches the browser.
 const BAMBUDDY_URL = (process.env.BAMBUDDY_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const BAMBUDDY_API_KEY = process.env.BAMBUDDY_API_KEY;
 const REQUEST_TIMEOUT_MS = 5000;

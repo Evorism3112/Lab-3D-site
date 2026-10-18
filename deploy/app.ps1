@@ -1428,7 +1428,7 @@ function Update-PrinterList($Config) {
     catch { $script:BbPrintersText = "-"; Show-PrinterMessage "Bambuddy не отвечает на $base.`nЕсли служба только что запущена - подождите полминуты." $ColYellow; return }
     if (-not $key) {
         $script:BbPrintersText = "нужен ключ"
-        Show-PrinterMessage "Bambuddy работает. Чтобы увидеть здесь принтеры, создайте ключ API в Bambuddy (Settings → API Keys, права printers:read, printers:control и inventory:read) и сохраните его ниже." $ColMuted
+        Show-PrinterMessage "Bambuddy работает. Чтобы увидеть здесь принтеры, создайте ключ API в Bambuddy (Settings → API Keys, права Read status, Control printer и Manage library) и сохраните его ниже." $ColMuted
         return
     }
     try { $printers = @(Invoke-BambuddyApi $base "/api/v1/printers/" $key) | Where-Object { $_.is_active } }

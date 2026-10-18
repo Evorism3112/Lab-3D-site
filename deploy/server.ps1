@@ -17,6 +17,7 @@
   server.bat db-push        # применить схему базы вручную (с вопросом о рисках)
   server.bat panel-password # пароль веб-панели (panel.<домен>)
   server.bat panel-install  # включить веб-панель   (panel-remove - выключить)
+  server.bat slicer         # установить / переустановить слайсер для точной цены
 #>
 param(
     [Parameter(Position = 0)][string]$Command = "menu",
@@ -106,6 +107,7 @@ function Show-Status {
         Write-Field "Адрес" $state.url "Cyan"
         $procs = "сайт PID {0}" -f $state.nextPid
         if ($state.caddyPid) { $procs += " · Caddy PID {0}" -f $state.caddyPid }
+        if ($state.slicerPid) { $procs += " · слайсер PID {0}" -f $state.slicerPid }
         Write-Field "Процессы" $procs "Gray"
     }
     elseif ($state) {
@@ -120,6 +122,7 @@ function Show-Status {
 
     $task = Get-AutostartTask
     Write-Field "Автозапуск" $(if ($task) { "включён (стартует вместе с Windows)" } else { "выключен" }) $(if ($task) { "Green" } else { "DarkGray" })
+    Write-Field "Слайсер" $(if (Test-SlicerInstalled) { "установлен (точная цена)" } else { "не установлен - server.bat slicer" }) $(if (Test-SlicerInstalled) { "Green" } else { "DarkGray" })
     $uploads = Format-Size (Get-FolderSize (Join-Path $script:Root "uploads"))
     $logs = Format-Size (Get-FolderSize $script:LogDir)
     Write-Field "Диск" "загрузки $uploads · логи $logs" "Gray"
@@ -295,6 +298,8 @@ function Invoke-Update {
     if (-not $failed) { Write-Step "Клиент базы"; & npx prisma generate; if ($LASTEXITCODE -ne 0) { $failed = "prisma generate не удался." } }
     if (-not $failed) { Write-Step "Схема базы"; if (-not (Invoke-DbPush)) { $failed = "prisma db push не удался." } }
     if (-not $failed) { Write-Step "Сборка сайта"; & npm run build; if ($LASTEXITCODE -ne 0) { $failed = "Сборка не удалась." } }
+    # Закреплённая версия слайсера сменилась - переставляем; его сбой сайт не останавливает.
+    if (-not $failed -and (Test-SlicerInstalled) -and -not (Test-SlicerCurrent)) { Invoke-SlicerInstall -Soft }
     if ($failed) {
         Write-Bad $failed
         if ($wasRunning) { Write-Info "Запускаю сайт снова, чтобы он не остался выключенным."; Invoke-Start }
@@ -494,7 +499,7 @@ function Invoke-Uninstall {
     Write-Host ""
     Show-Header
     Write-Host ""
-    Write-Info "Будет удалено: автозапуск, правило брандмауэра, настройки (.env.production), логи и служебные файлы."
+    Write-Info "Будет удалено: автозапуск, правило брандмауэра, настройки (.env.production), логи, слайсер и служебные файлы."
     Write-Good "Не затрагивается: база данных, папка uploads и сам код сайта."
     Write-Host ""
     if (-not $script:AssumeYes -and -not (Read-Confirm "Удалить установку сервера?")) { Write-Info "Отменено."; return }
@@ -504,7 +509,8 @@ function Invoke-Uninstall {
     Remove-NetFirewallRule -DisplayName "Lab3D web (80/443)" -ErrorAction SilentlyContinue
     Remove-Item $script:EnvFile, $script:CaddyFile, $script:StateFile, $script:StopFlag -Force -ErrorAction SilentlyContinue
     Remove-Folder $script:LogDir
-    Write-Ok "Настройки, логи и служебные файлы удалены."
+    Remove-Folder $script:SlicerDir
+    Write-Ok "Настройки, логи, слайсер и служебные файлы удалены."
 
     $dropModules = if ($script:AssumeYes) { [bool]$RemoveModules } else { Read-Confirm "Удалить также node_modules и сборку .next? (вернутся при установке)" }
     if ($dropModules) {
@@ -554,6 +560,17 @@ function Show-Menu {
             }
         }
         catch { Write-Bad $_.Exception.Message; Wait-AnyKey }
+    }
+}
+
+# ---------------------------------------------------------------- слайсер (точная цена)
+# -Soft (при обновлении): сбой слайсера - предупреждение, а не провал всего обновления.
+function Invoke-SlicerInstall([switch]$Soft) {
+    try { & (Join-Path $PSScriptRoot "install-slicer.ps1") }
+    catch {
+        $message = "Слайсер не установлен: $($_.Exception.Message)"
+        if ($Soft) { Write-Warn $message } else { Write-Bad $message }
+        Write-Info "Сайт работает дальше, цены остаются примерными. Повторить: server.bat slicer"
     }
 }
 
@@ -672,11 +689,12 @@ try {
         "panel-password" { Invoke-PanelPassword }
         "panel-install" { Invoke-PanelInstall }
         "panel-remove" { Invoke-PanelRemove }
+        "slicer" { Invoke-SlicerInstall }
         # Interactive schema push (asks y/N itself) for changes setup/update refuse to apply unattended.
         "db-push" { Import-EnvFile $script:EnvFile | Out-Null; & npx prisma db push; if ($LASTEXITCODE -ne 0) { Write-Bad "prisma db push не удался." } }
         default {
             Write-Bad "Неизвестная команда: $Command"
-            Write-Info "Доступно: menu, start, stop, restart, status, logs, update, setup, autostart, cleanup, uninstall"
+            Write-Info "Доступно: menu, start, stop, restart, status, logs, update, setup, autostart, cleanup, uninstall, slicer"
         }
     }
 }

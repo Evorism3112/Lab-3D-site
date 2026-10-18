@@ -19,7 +19,8 @@ param(
     [int]$AppPort = 3000,
     [int]$BambuddyPort = 8000,
     [switch]$SkipFirewall,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipSlicer
 )
 
 . (Join-Path $PSScriptRoot "lib.ps1")
@@ -143,7 +144,16 @@ else {
     Write-Ok "https://$bambuddyDomain -> 127.0.0.1:$BambuddyPort (DNS-запись A: $bambuddyDomain -> $(if ($publicIp) { $publicIp } else { $Ip }))"
 }
 if (-not $settings["BAMBUDDY_API_KEY"]) {
-    Write-Warn "BAMBUDDY_API_KEY пуст: создайте ключ в Bambuddy (Settings -> API Keys, права printers:read, printers:control и inventory:read) и впишите в $($script:EnvFile)"
+    Write-Warn "BAMBUDDY_API_KEY пуст: создайте ключ в Bambuddy (Settings -> API Keys, права printers:read, printers:control, inventory:read, а для точной цены ещё library:upload, library:read_all, library:delete_all и settings:update) и впишите в $($script:EnvFile)"
+}
+
+# Слайсер для точной цены (install-slicer.ps1). Уже установленный не трогаем - его обновляет update.
+Write-Step "Слайсер (точная цена)"
+if ($SkipSlicer) { Write-Warn "Пропущено. Установить позже: server.bat slicer" }
+elseif (Test-SlicerInstalled) { Write-Ok "Уже установлен." }
+else {
+    try { & (Join-Path $PSScriptRoot "install-slicer.ps1") }
+    catch { Write-Warn "Слайсер не установлен: $($_.Exception.Message). Сайт работает с примерными ценами; повторить: server.bat slicer" }
 }
 
 Write-Host ""

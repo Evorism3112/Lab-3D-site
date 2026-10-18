@@ -1,0 +1,142 @@
+﻿<#
+.SYNOPSIS
+  Ставит (или переставляет) слайсер для точной цены на сайте: портативный OrcaSlicer и
+  HTTP-обёртку, через которую его вызывает Bambuddy, - в deploy\slicer, без Docker.
+
+.EXAMPLE
+  server.bat slicer
+
+.NOTES
+  Версии закреплены в lib.ps1. Работающий сервер подхватывает слайсер сам (start.ps1),
+  перезапускать сайт не нужно. В конце скрипт проверяет, что OrcaSlicer режет из командной
+  строки, и прописывает слайсер в настройки Bambuddy (если ключу API это разрешено).
+#>
+
+. (Join-Path $PSScriptRoot "lib.ps1")
+Set-Location $script:Root
+
+$config = Read-EnvFile $script:EnvFile
+$node = if ($config["DEPLOY_NODE"] -and (Test-Path $config["DEPLOY_NODE"])) { $config["DEPLOY_NODE"] } else { Find-Executable "node" }
+if (-not $node) { throw "Node.js не найден." }
+$curl = Find-Executable "curl.exe"
+$tar = Find-Executable "tar.exe"
+if (-not $curl -or -not $tar) { throw "Нужны curl.exe и tar.exe (есть в Windows 10 1803 и новее)." }
+
+function Save-Download([string]$Url, [string]$Path) {
+    # -sS: без полосы прогресса (окно Lab3D.exe показывает вывод построчно), но с ошибками.
+    & $curl -fsSL --retry 3 -o $Path $Url
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось скачать $Url" }
+}
+
+New-Item -ItemType Directory -Force -Path $script:SlicerDir | Out-Null
+[IO.File]::WriteAllText($script:SlicerInstallFlag, "$PID")
+$download = Join-Path $script:SlicerDir "download"
+try {
+    # Работающий слайсер держит свои файлы - останавливаем; супервизор не запустит его, пока есть флаг.
+    $state = Get-ServerState
+    if ($state -and $state.slicerPid -and (Test-ProcAlive $state.slicerPid $state.slicerStart)) {
+        Write-Step "Остановка работающего слайсера"
+        Stop-ProcessTree $state.slicerPid
+        Start-Sleep -Seconds 2
+    }
+    Remove-Item $download -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $download | Out-Null
+
+    $version = $script:SlicerOrcaVersion
+    Write-Step "OrcaSlicer $version (портативный, ~170 МБ)"
+    $zip = Join-Path $download "orca.zip"
+    Save-Download "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v$version/OrcaSlicer_Windows_V${version}_x64_portable.zip" $zip
+    $orcaDir = Split-Path $script:SlicerExe
+    Remove-Item $orcaDir -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $orcaDir | Out-Null
+    & $tar -xf $zip -C $orcaDir
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось распаковать OrcaSlicer." }
+    if (-not (Test-Path $script:SlicerExe)) { throw "В архиве OrcaSlicer нет orca-slicer.exe." }
+    Write-Ok $script:SlicerExe
+
+    Write-Step "Обёртка для Bambuddy (orca-slicer-api)"
+    $apiZip = Join-Path $download "api.zip"
+    Save-Download "https://codeload.github.com/maziggy/orca-slicer-api/zip/$($script:SlicerApiCommit)" $apiZip
+    $apiSource = Join-Path $download "api"
+    New-Item -ItemType Directory -Force -Path $apiSource | Out-Null
+    & $tar -xf $apiZip -C $apiSource
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось распаковать orca-slicer-api." }
+    $unpacked = Get-ChildItem -Path $apiSource -Directory | Select-Object -First 1
+    if (-not $unpacked) { throw "Архив orca-slicer-api пуст." }
+    Remove-Item $script:SlicerApiDir -Recurse -Force -ErrorAction SilentlyContinue
+    Move-Item -Path $unpacked.FullName -Destination $script:SlicerApiDir
+    Push-Location $script:SlicerApiDir
+    try {
+        & npm ci --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { throw "npm ci для orca-slicer-api не удался." }
+        & npm run build
+        if ($LASTEXITCODE -ne 0) { throw "Сборка orca-slicer-api не удалась." }
+    }
+    finally { Pop-Location }
+    if (-not (Test-Path $script:SlicerApiEntry)) { throw "После сборки нет $($script:SlicerApiEntry)." }
+    New-Item -ItemType Directory -Force -Path $script:SlicerDataDir | Out-Null
+    Write-Ok $script:SlicerApiDir
+
+    # Главный риск без Docker: режет ли Windows-версия из командной строки. Проверяем на кубике.
+    Write-Step "Проверка: OrcaSlicer режет модель из командной строки"
+    $test = Join-Path $download "test"
+    New-Item -ItemType Directory -Force -Path $test | Out-Null
+    $cube = Join-Path $test "cube.stl"
+    $v = @((0,0,0),(20,0,0),(20,20,0),(0,20,0),(0,0,20),(20,0,20),(20,20,20),(0,20,20))
+    $faces = @((0,2,1),(0,3,2),(4,5,6),(4,6,7),(0,1,5),(0,5,4),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,0,4),(3,4,7))
+    $lines = @("solid cube")
+    foreach ($f in $faces) {
+        $lines += "facet normal 0 0 0", "outer loop"
+        foreach ($i in $f) { $lines += ("vertex {0} {1} {2}" -f $v[$i][0], $v[$i][1], $v[$i][2]) }
+        $lines += "endloop", "endfacet"
+    }
+    $lines += "endsolid cube"
+    [IO.File]::WriteAllLines($cube, $lines)
+    $slice = Start-Process -FilePath $script:SlicerExe -ArgumentList @("--slice", "0", "--outputdir", "`"$test`"", "`"$cube`"") `
+        -WorkingDirectory $test -PassThru -WindowStyle Hidden
+    if (-not $slice.WaitForExit(180000)) { Stop-ProcessTree $slice.Id; $sliceOk = $false }
+    else { $sliceOk = [bool](Get-ChildItem -Path $test -Include "*.gcode", "*.3mf" -Recurse -ErrorAction SilentlyContinue) }
+    if ($sliceOk) { Write-Ok "Кубик нарезан - слайсер работает." }
+    else {
+        # Без профилей принтера проверка грубая: провал - повод проверить, а не обязательно поломка.
+        Write-Warn ("Тестовый кубик не нарезался (код {0})." -f $(if ($slice.HasExited) { $slice.ExitCode } else { "таймаут" }))
+        Write-Warn "Проверьте нарезку кнопкой Slice в Bambuddy. Если и там ошибка, сайт будет показывать примерную цену."
+    }
+
+    [IO.File]::WriteAllText($script:SlicerVersionFile, (Get-SlicerVersionTag))
+}
+finally {
+    Remove-Item $script:SlicerInstallFlag -Force -ErrorAction SilentlyContinue
+    Remove-Item $download -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Bambuddy ищет OrcaSlicer на 127.0.0.1:3003 по умолчанию, но слайсером по умолчанию у него
+# Bambu Studio - переключаем. Нужен ключ с правом settings:update, иначе - вручную.
+Write-Step "Настройка Bambuddy"
+$bambuddyUrl = if ($config["BAMBUDDY_URL"]) { $config["BAMBUDDY_URL"].TrimEnd("/") } else { "http://127.0.0.1:8000" }
+$apiKey = $config["BAMBUDDY_API_KEY"]
+$manual = "В Bambuddy: Settings -> Slicer - выберите OrcaSlicer и адрес http://127.0.0.1:$($script:SlicerPort)"
+if (-not $apiKey) { Write-Warn "BAMBUDDY_API_KEY не задан. $manual" }
+else {
+    try {
+        $body = @{ preferred_slicer = "orcaslicer"; orcaslicer_api_url = "http://127.0.0.1:$($script:SlicerPort)"; use_slicer_api = $true } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Method Patch -Uri "$bambuddyUrl/api/v1/settings" -Headers @{ "X-API-Key" = $apiKey } `
+            -ContentType "application/json" -Body $body -TimeoutSec 15 | Out-Null
+        Write-Ok "Bambuddy режет через OrcaSlicer на 127.0.0.1:$($script:SlicerPort)."
+    }
+    catch { Write-Warn "Не удалось изменить настройки Bambuddy ($($_.Exception.Message)). $manual" }
+}
+
+if (Get-ServerState) {
+    Write-Step "Запуск слайсера"
+    $up = $false
+    for ($i = 0; $i -lt 30 -and -not $up; $i++) {
+        Start-Sleep -Seconds 2
+        try { Invoke-WebRequest -Uri "http://127.0.0.1:$($script:SlicerPort)/health" -UseBasicParsing -TimeoutSec 10 | Out-Null; $up = $true } catch { }
+    }
+    if ($up) { Write-Ok "Слайсер отвечает на 127.0.0.1:$($script:SlicerPort)." }
+    else { Write-Warn "Слайсер не ответил за минуту - смотрите deploy\logs\slicer-error.log" }
+}
+else { Write-Ok "Слайсер запустится вместе с сервером." }
+Write-Host ""
+Write-Host "  Готово. Осталось выбрать профили в админке сайта: Цены -> «Точная цена через слайсер»." -ForegroundColor Green

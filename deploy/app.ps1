@@ -711,23 +711,25 @@ $cardBbHero.Add_Resize({
 })
 $pPrinters.Controls.Add($cardBbHero, 0, 1)
 
-# плитки: адрес / поддомен / принтеры / ключ API
-$tilesBb = New-Table @(100) 4
+# плитки: адрес / поддомен / принтеры / ключ API / слайсер (точная цена на сайте)
+$tilesBb = New-Table @(100) 5
 $tilesBb.Margin = New-Object Windows.Forms.Padding(0, 0, 0, 16)
 $script:BbFieldValues = @{}
 $col = 0
-foreach ($name in @("Адрес", "Поддомен", "Принтеры", "Ключ API")) {
+foreach ($name in @("Адрес", "Поддомен", "Принтеры", "Ключ API", "Слайсер")) {
     $tile = New-Card $ColCard 14
     $tile.Dock = "Fill"
     $tile.Padding = New-Object Windows.Forms.Padding(18, 16, 12, 8)
-    $tile.Margin = New-Object Windows.Forms.Padding(0, 0, $(if ($col -lt 3) { 14 } else { 0 }), 0)
-    if ($name -eq "Адрес") {
+    $tile.Margin = New-Object Windows.Forms.Padding(0, 0, $(if ($col -lt 4) { 14 } else { 0 }), 0)
+    if ($name -in @("Адрес", "Слайсер")) {
         $v = New-Object Windows.Forms.LinkLabel
         $v.LinkColor = $ColBlue
         $v.ActiveLinkColor = $ColAccent
         $v.VisitedLinkColor = $ColBlue
         $v.LinkBehavior = "HoverUnderline"
-        $v.Add_LinkClicked({ if ($script:BbUrl) { Start-Process $script:BbUrl } })
+        $v.ForeColor = $ColInk   # у «Слайсера» ссылка только «установить», остальное - обычный текст
+        if ($name -eq "Адрес") { $v.Add_LinkClicked({ if ($script:BbUrl) { Start-Process $script:BbUrl } }) }
+        else { $v.Add_LinkClicked({ Start-SlicerInstall }) }
     }
     else { $v = New-Object Windows.Forms.Label; $v.ForeColor = $ColInk }
     $v.AutoSize = $false
@@ -1511,6 +1513,7 @@ function Update-BambuddyStatus([bool]$Poll = $true) {
     $script:BbFieldValues["Адрес"].Text = $script:BbUrl
     $script:BbFieldValues["Поддомен"].Text = $(if (-not $domain) { "нет домена сайта" } elseif ($siteOn) { "подключён" } else { "не подключён" })
     $script:BbFieldValues["Ключ API"].Text = $(if ($config["BAMBUDDY_API_KEY"]) { "задан" } else { "не задан" })
+    Update-SlicerTile
 
     if ($Poll -and $script:CurrentPage -eq "printers") {
         if (-not $running) { $script:BbPrintersText = "-"; Show-PrinterMessage "Служба Bambuddy не запущена." $ColMuted }
@@ -1528,6 +1531,27 @@ function Update-BambuddyStatus([bool]$Poll = $true) {
     $btnBbLogs.Enabled = Test-Path $script:BbLogDir
     $btnBbKey.Enabled = $free -and (Test-Path $script:EnvFile)
     $btnBbSite.Enabled = $free -and [bool]$domain
+}
+
+# Слайсер для точной цены (install-slicer.ps1): работает в составе сервера сайта (start.ps1).
+# Пока он не установлен, плитка - ссылка «установить»; переустановка - server.bat slicer.
+function Update-SlicerTile {
+    $tile = $script:BbFieldValues["Слайсер"]
+    $installed = Test-SlicerInstalled
+    $state = if ($installed) { Get-ServerState } else { $null }
+    $running = $state -and $state.slicerPid -and (Test-ProcAlive $state.slicerPid $state.slicerStart)
+    $tile.Text = if (-not $installed) { "установить" } elseif ($running) { "работает" } elseif ($state) { "запускается..." } else { "сервер остановлен" }
+    $tile.Enabled = -not $script:Busy -and -not $script:WebOp
+    if ($installed) { $tile.LinkArea = New-Object Windows.Forms.LinkArea(0, 0) } else { $tile.LinkArea = New-Object Windows.Forms.LinkArea(0, $tile.Text.Length) }
+}
+
+function Start-SlicerInstall {
+    if ($script:Busy -or $script:WebOp) { return }
+    $answer = [Windows.Forms.MessageBox]::Show(
+        "Установить слайсер для точной цены на сайте?`n`nСкачается портативный OrcaSlicer (~170 МБ) и обёртка для Bambuddy в deploy\slicer, без Docker. Сайт продолжит работать, слайсер подхватится сам.",
+        "Слайсер", "YesNo", "Question")
+    if ($answer -ne "Yes") { return }
+    Add-Steps @((New-BambuddyStep "Установка слайсера" "slicer"))
 }
 
 # ---------------------------------------------------------------- обновления из git

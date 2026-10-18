@@ -269,6 +269,35 @@ $Domain {
 }
 
 # ---------------------------------------------------------------------------
+# Слайсер для точной цены на сайте (lib/slicing.ts): портативный OrcaSlicer и HTTP-обёртка
+# maziggy/orca-slicer-api, через которую его вызывает Bambuddy. Ставится в deploy\slicer
+# (server.bat slicer), запускается и перезапускается вместе с сайтом (start.ps1). Версии
+# закреплены: когда их меняют здесь, server.bat update переустанавливает слайсер сам.
+# ---------------------------------------------------------------------------
+$script:SlicerDir = Join-Path $PSScriptRoot "slicer"
+$script:SlicerOrcaVersion = "2.4.2"
+$script:SlicerApiCommit = "4c05506e40a0057db33234837db164143cbf3ad3"   # ветка bambuddy/profile-resolver
+# Порт, на котором Bambuddy по умолчанию ищет OrcaSlicer (его docker-compose).
+$script:SlicerPort = 3003
+$script:SlicerExe = Join-Path $script:SlicerDir "orca\orca-slicer.exe"
+$script:SlicerApiDir = Join-Path $script:SlicerDir "api"
+$script:SlicerApiEntry = Join-Path $script:SlicerApiDir "dist\src\index.js"
+$script:SlicerDataDir = Join-Path $script:SlicerDir "data"
+$script:SlicerVersionFile = Join-Path $script:SlicerDir "version.txt"
+# Пока он есть, идёт установка: супервизор не запускает слайсер, чтобы не держать заменяемые файлы.
+$script:SlicerInstallFlag = Join-Path $script:SlicerDir "installing.flag"
+
+function Get-SlicerVersionTag { return "$($script:SlicerOrcaVersion)|$($script:SlicerApiCommit)" }
+
+function Test-SlicerInstalled { return (Test-Path $script:SlicerExe) -and (Test-Path $script:SlicerApiEntry) }
+
+# Установлен ровно той версии, что закреплена выше.
+function Test-SlicerCurrent {
+    if (-not (Test-SlicerInstalled) -or -not (Test-Path $script:SlicerVersionFile)) { return $false }
+    return (Get-Content -Path $script:SlicerVersionFile -Raw).Trim() -eq (Get-SlicerVersionTag)
+}
+
+# ---------------------------------------------------------------------------
 # Background server state: start.ps1 (the supervisor) records what it runs here,
 # so any terminal - even one opened much later - can find, inspect and stop it.
 # ---------------------------------------------------------------------------

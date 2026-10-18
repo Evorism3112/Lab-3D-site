@@ -87,12 +87,14 @@ $state = [ordered]@{
     startedAt = (Get-Date).ToUniversalTime().ToString("o")
     mode = $mode; url = $url; ip = $ip; port = $appPort; ready = $false
     nextPid = $null; nextStart = $null; caddyPid = $null; caddyStart = $null
+    slicerPid = $null; slicerStart = $null
 }
 Save-State $state
 
 $nextProcess = $null
 $caddyProcess = $null
-$restarts = @{ next = @(); caddy = @() }
+$slicerProcess = $null
+$restarts = @{ next = @(); caddy = @(); slicer = @() }
 
 function Start-Site {
     foreach ($name in "next.log", "next-error.log") { Rotate-Log (Join-Path $script:LogDir $name) 2MB }
@@ -129,6 +131,28 @@ function Start-Proxy {
     Write-Log "Caddy запущен ($($script:caddyProcess.Id)), адрес: $url"
 }
 
+# Слайсер для точной цены (server.bat slicer) - когда он установлен и сейчас не переустанавливается.
+# Сам сайт без него работает: цены просто остаются примерными.
+function Test-SlicerWanted { return (Test-SlicerInstalled) -and -not (Test-Path $script:SlicerInstallFlag) }
+
+function Start-Slicer {
+    foreach ($name in "slicer.log", "slicer-error.log") { Rotate-Log (Join-Path $script:LogDir $name) 2MB }
+    $vars = @{ PORT = "$($script:SlicerPort)"; ORCASLICER_PATH = $script:SlicerExe; DATA_PATH = $script:SlicerDataDir; NODE_ENV = "production" }
+    New-Item -ItemType Directory -Force -Path $script:SlicerDataDir | Out-Null
+    # Переменные нужны только процессу слайсера - сайт перезапускается из этого же процесса.
+    foreach ($key in $vars.Keys) { Set-Item "Env:$key" $vars[$key] }
+    try {
+        $script:slicerProcess = Start-Process -FilePath $node -ArgumentList @((Join-Path $PSScriptRoot "slicer-api.mjs")) `
+            -WorkingDirectory $script:SlicerApiDir -PassThru -NoNewWindow `
+            -RedirectStandardOutput (Join-Path $script:LogDir "slicer.log") -RedirectStandardError (Join-Path $script:LogDir "slicer-error.log")
+    }
+    finally { foreach ($key in $vars.Keys) { Remove-Item "Env:$key" -ErrorAction SilentlyContinue } }
+    $state.slicerPid = $script:slicerProcess.Id
+    $state.slicerStart = Get-ProcStart $script:slicerProcess.Id
+    Save-State $state
+    Write-Log "Слайсер запущен ($($script:slicerProcess.Id)), 127.0.0.1:$($script:SlicerPort)."
+}
+
 # Не даём упавшему процессу перезапускаться бесконечно и без пауз.
 function Get-RestartDelay([string]$Key) {
     $now = Get-Date
@@ -158,6 +182,19 @@ try {
             if (Test-Path $script:StopFlag) { break }
             Start-Proxy
         }
+        if (-not $slicerProcess -or $slicerProcess.HasExited) {
+            # Установщик остановил его сам - ждём, пока он закончит, без записи о сбое.
+            if (Test-SlicerWanted) {
+                if ($slicerProcess) {
+                    $delay = Get-RestartDelay "slicer"
+                    Write-Log "Слайсер остановился (код $($slicerProcess.ExitCode)). Перезапуск через $delay с."
+                    Start-Sleep -Seconds $delay
+                    if (Test-Path $script:StopFlag) { break }
+                }
+                if (Test-SlicerWanted) { Start-Slicer }
+            }
+            elseif ($slicerProcess) { $slicerProcess = $null; $state.slicerPid = $null; $state.slicerStart = $null; Save-State $state }
+        }
     }
     Write-Log "Получена команда остановки."
 }
@@ -166,7 +203,7 @@ catch {
     throw
 }
 finally {
-    foreach ($process in @($caddyProcess, $nextProcess)) {
+    foreach ($process in @($slicerProcess, $caddyProcess, $nextProcess)) {
         if ($process -and -not $process.HasExited) { Stop-ProcessTree $process.Id }
     }
     Remove-Item $script:StopFlag -ErrorAction SilentlyContinue

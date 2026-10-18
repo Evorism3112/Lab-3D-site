@@ -60,3 +60,4 @@ next-env.d.ts
 /deploy/controls-*.dll
 /deploy/operation.json
 /deploy/gui-operation.json
+/deploy/slicer/

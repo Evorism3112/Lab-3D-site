@@ -1668,7 +1668,8 @@ function Update-SlicerStatus([bool]$Probe = $false) {
             try {
                 $bbSettings = Invoke-BambuddyApi (Get-BambuddyBase $config) "/api/v1/settings/" $key
                 if ($bbSettings.preferred_slicer -and $bbSettings.preferred_slicer -ne "bambu_studio") { $bb.Text = "выбран OrcaSlicer"; $bb.ForeColor = $ColYellow }
-                elseif ($bbSettings.bambu_studio_api_url -notmatch ":$($script:SlicerPort)/?$") { $bb.Text = "не тот адрес"; $bb.ForeColor = $ColYellow }
+                elseif (-not $bbSettings.bambu_studio_api_url) { $bb.Text = "адрес пуст (идёт на :3001)"; $bb.ForeColor = $ColYellow }
+                elseif ($bbSettings.bambu_studio_api_url -notmatch ":$($script:SlicerPort)/?$") { $bb.Text = "адрес $($bbSettings.bambu_studio_api_url)"; $bb.ForeColor = $ColYellow }
                 elseif (-not $bbSettings.use_slicer_api) { $bb.Text = "Bambu Studio, API выкл."; $bb.ForeColor = $ColInk }
                 else { $bb.Text = "Bambu Studio"; $bb.ForeColor = $ColAccent }
                 $script:Tips.SetToolTip($bb, "Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер». Адрес: " + $(if ($bbSettings.bambu_studio_api_url) { $bbSettings.bambu_studio_api_url } else { "не задан (по умолчанию localhost:3001 - там CRM)" }))

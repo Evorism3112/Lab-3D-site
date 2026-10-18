@@ -18,6 +18,8 @@
   server.bat panel-password # пароль веб-панели (panel.<домен>)
   server.bat panel-install  # включить веб-панель   (panel-remove - выключить)
   server.bat slicer         # установить / переустановить слайсер для точной цены
+  server.bat slicer-test    # проверить нарезку целиком (слайсер -> Bambuddy -> тестовый кубик)
+  server.bat slicer-restart # перезапустить слайсер (сайт не трогается)
 #>
 param(
     [Parameter(Position = 0)][string]$Command = "menu",
@@ -574,6 +576,29 @@ function Invoke-SlicerInstall([switch]$Soft) {
     }
 }
 
+function Invoke-SlicerTest {
+    if (-not (Test-SlicerInstalled)) { Write-Bad "Слайсер не установлен - server.bat slicer"; return }
+    $config = Import-EnvFile $script:EnvFile
+    $node = if ($config["DEPLOY_NODE"] -and (Test-Path $config["DEPLOY_NODE"])) { $config["DEPLOY_NODE"] } else { Find-Executable "node" }
+    $env:SLICER_PORT = "$($script:SlicerPort)"
+    & $node (Join-Path $PSScriptRoot "slicer-test.mjs")
+    if ($LASTEXITCODE -ne 0) { $script:HadError = $true }
+}
+
+# Слайсер - дочерний процесс супервизора (start.ps1): достаточно его завершить, через пару секунд
+# супервизор запустит его снова.
+function Invoke-SlicerRestart {
+    $state = Get-ServerState
+    if (-not $state) { Write-Bad "Сервер остановлен - слайсер запускается вместе с ним."; return }
+    if (-not (Test-SlicerInstalled)) { Write-Bad "Слайсер не установлен - server.bat slicer"; return }
+    if ($state.slicerPid -and (Test-ProcAlive $state.slicerPid $state.slicerStart)) { Stop-ProcessTree $state.slicerPid }
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Seconds 1
+        try { Invoke-WebRequest -Uri "http://127.0.0.1:$($script:SlicerPort)/health" -UseBasicParsing -TimeoutSec 5 | Out-Null; Write-Good "Слайсер перезапущен и отвечает."; return } catch { }
+    }
+    Write-Bad "Слайсер не ответил за 30 секунд - смотрите deploy\logs\slicer-error.log"
+}
+
 # ---------------------------------------------------------------- Bambuddy (принтеры)
 function Invoke-BambuddyService([string]$Action) {
     $service = Get-Service -Name $script:BambuddyService -ErrorAction SilentlyContinue
@@ -690,6 +715,8 @@ try {
         "panel-install" { Invoke-PanelInstall }
         "panel-remove" { Invoke-PanelRemove }
         "slicer" { Invoke-SlicerInstall }
+        "slicer-test" { Invoke-SlicerTest }
+        "slicer-restart" { Invoke-SlicerRestart }
         # Interactive schema push (asks y/N itself) for changes setup/update refuse to apply unattended.
         "db-push" { Import-EnvFile $script:EnvFile | Out-Null; & npx prisma db push; if ($LASTEXITCODE -ne 0) { Write-Bad "prisma db push не удался." } }
         default {

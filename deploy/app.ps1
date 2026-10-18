@@ -426,7 +426,7 @@ $script:Pages = @{}
 $script:NavButtons = @{}
 $navItems = @(
     @("overview", "Обзор", (G 0xE80F)), @("orders", "Заказы", (G 0xE7BF)), @("printers", "Принтеры", (G 0xE749)),
-    @("logs", "Логи", (G 0xE8FD)), @("updates", "Обновления", (G 0xE895)),
+    @("slicer", "Слайсер", (G 0xE7B8)), @("logs", "Логи", (G 0xE8FD)), @("updates", "Обновления", (G 0xE895)),
     @("settings", "Настройки", (G 0xE713)), @("panel", "Веб-панель", (G 0xE774)), @("cleanup", "Очистка", (G 0xE74D))
 )
 $navY = 108
@@ -466,6 +466,7 @@ function Show-Page([string]$Name) {
     if ($Name -eq "updates") { Update-UpdatesView }
     if ($Name -eq "settings") { Load-SettingsValues }
     if ($Name -eq "printers") { $script:BbPollTick = 0; Update-BambuddyStatus }
+    if ($Name -eq "slicer") { Update-SlicerStatus $true }
     if ($Name -eq "panel") { Update-PanelStatus }
 }
 
@@ -711,25 +712,23 @@ $cardBbHero.Add_Resize({
 })
 $pPrinters.Controls.Add($cardBbHero, 0, 1)
 
-# плитки: адрес / поддомен / принтеры / ключ API / слайсер (точная цена на сайте)
-$tilesBb = New-Table @(100) 5
+# плитки: адрес / поддомен / принтеры / ключ API
+$tilesBb = New-Table @(100) 4
 $tilesBb.Margin = New-Object Windows.Forms.Padding(0, 0, 0, 16)
 $script:BbFieldValues = @{}
 $col = 0
-foreach ($name in @("Адрес", "Поддомен", "Принтеры", "Ключ API", "Слайсер")) {
+foreach ($name in @("Адрес", "Поддомен", "Принтеры", "Ключ API")) {
     $tile = New-Card $ColCard 14
     $tile.Dock = "Fill"
     $tile.Padding = New-Object Windows.Forms.Padding(18, 16, 12, 8)
-    $tile.Margin = New-Object Windows.Forms.Padding(0, 0, $(if ($col -lt 4) { 14 } else { 0 }), 0)
-    if ($name -in @("Адрес", "Слайсер")) {
+    $tile.Margin = New-Object Windows.Forms.Padding(0, 0, $(if ($col -lt 3) { 14 } else { 0 }), 0)
+    if ($name -eq "Адрес") {
         $v = New-Object Windows.Forms.LinkLabel
         $v.LinkColor = $ColBlue
         $v.ActiveLinkColor = $ColAccent
         $v.VisitedLinkColor = $ColBlue
         $v.LinkBehavior = "HoverUnderline"
-        $v.ForeColor = $ColInk   # у «Слайсера» ссылка только «установить», остальное - обычный текст
-        if ($name -eq "Адрес") { $v.Add_LinkClicked({ if ($script:BbUrl) { Start-Process $script:BbUrl } }) }
-        else { $v.Add_LinkClicked({ Start-SlicerInstall }) }
+        $v.Add_LinkClicked({ if ($script:BbUrl) { Start-Process $script:BbUrl } })
     }
     else { $v = New-Object Windows.Forms.Label; $v.ForeColor = $ColInk }
     $v.AutoSize = $false
@@ -786,6 +785,84 @@ $bbJournal.Margin = New-Object Windows.Forms.Padding(0)
 $bbBottom.Controls.Add($bbJournal, 1, 0)
 $pPrinters.Controls.Add($bbBottom, 0, 4)
 Add-Page "printers" $pPrinters
+
+# ---------------------------------------------------------------- страница: слайсер
+# OrcaSlicer + обёртка для Bambuddy (install-slicer.ps1), через которые сайт считает точную цену.
+# Работает в составе сервера сайта (start.ps1); проверка - slicer-test.mjs.
+$pSlicer = New-Table @(80, 184, 120, "*")
+$pSlicer.Controls.Add((New-Heading "Слайсер" "OrcaSlicer для точной цены на сайте - через Bambuddy, без Docker"), 0, 0)
+
+$cardSlHero = New-Card $ColCard 18
+$cardSlHero.Dock = "Fill"
+$cardSlHero.Margin = New-Object Windows.Forms.Padding(0, 0, 0, 16)
+$dotSl = New-Object Lab3D.StatusDot
+$dotSl.SetBounds(24, 24, 34, 34)
+$lblSlState = New-Label "..." 22 $ColInk $true
+$lblSlState.Location = New-Object Drawing.Point(64, 20)
+$lblSlSub = New-Label "" 10 $ColMuted
+$lblSlSub.Location = New-Object Drawing.Point(66, 66)
+$cardSlHero.Controls.AddRange(@($dotSl, $lblSlState, $lblSlSub))
+
+$actionsSl = New-Object Windows.Forms.FlowLayoutPanel
+$actionsSl.Dock = "Bottom"
+$actionsSl.Height = 74
+$actionsSl.BackColor = [Drawing.Color]::Transparent
+$actionsSl.Padding = New-Object Windows.Forms.Padding(22, 6, 0, 18)
+$btnSlTest = New-Button "Проверить нарезку" "primary" 222 (G 0xE768)
+$btnSlRestart = New-Button "Перезапустить" "secondary" 176 (G 0xE72C)
+$btnSlInstall = New-Button "Установить" "secondary" 196 (G 0xE896)
+$actionsSl.Controls.AddRange(@($btnSlTest, $btnSlRestart, $btnSlInstall))
+$cardSlHero.Controls.Add($actionsSl)
+$btnSlLog = New-Button "Лог" "ghost" 96 (G 0xE8FD)
+$btnSlLog.Height = 32
+$btnSlLog.Anchor = "Top,Right"
+$btnSlLog.Location = New-Object Drawing.Point(($cardSlHero.Width - 112), 16)
+$cardSlHero.Controls.Add($btnSlLog)
+$cardSlHero.Add_Resize({ $btnSlLog.Left = $cardSlHero.Width - $btnSlLog.Width - (Px 16) })
+$pSlicer.Controls.Add($cardSlHero, 0, 1)
+
+# плитки: адрес / версия / настройка Bambuddy / последняя проверка
+$tilesSl = New-Table @(100) 4
+$tilesSl.Margin = New-Object Windows.Forms.Padding(0, 0, 0, 16)
+$script:SlFieldValues = @{}
+$col = 0
+foreach ($name in @("Адрес", "Версия", "В Bambuddy", "Проверка")) {
+    $tile = New-Card $ColCard 14
+    $tile.Dock = "Fill"
+    $tile.Padding = New-Object Windows.Forms.Padding(18, 16, 12, 8)
+    $tile.Margin = New-Object Windows.Forms.Padding(0, 0, $(if ($col -lt 3) { 14 } else { 0 }), 0)
+    if ($name -eq "Адрес") {
+        $v = New-Object Windows.Forms.LinkLabel
+        $v.LinkColor = $ColBlue
+        $v.ActiveLinkColor = $ColAccent
+        $v.VisitedLinkColor = $ColBlue
+        $v.LinkBehavior = "HoverUnderline"
+        $v.Add_LinkClicked({ Start-Process ("http://127.0.0.1:{0}/health" -f $script:SlicerPort) })
+    }
+    else { $v = New-Object Windows.Forms.Label; $v.ForeColor = $ColInk }
+    $v.AutoSize = $false
+    $v.AutoEllipsis = $true
+    $v.Dock = "Top"
+    $v.Height = 34
+    $v.BackColor = $ColCard
+    $v.Font = New-Font 12 $true
+    $v.Text = "-"
+    $k = New-Label $name 9 $ColMuted $false $ColCard
+    $k.AutoSize = $false
+    $k.Dock = "Top"
+    $k.Height = 22
+    $tile.Controls.Add($v)
+    $tile.Controls.Add($k)
+    $tilesSl.Controls.Add($tile, $col, 0)
+    $script:SlFieldValues[$name] = $v
+    $col++
+}
+$pSlicer.Controls.Add($tilesSl, 0, 2)
+
+$consoleSl = New-Console
+$pSlicer.Controls.Add((New-ConsoleCard $consoleSl), 0, 3)
+Add-ConsoleText $consoleSl "«Проверить нарезку» проходит весь путь, как сайт: слайсер -> ключ и настройки Bambuddy -> профили из админки сайта -> нарезка кубика 20 мм -> удаление файлов.`n" $ColMuted
+Add-Page "slicer" $pSlicer
 
 # ---------------------------------------------------------------- страница: логи
 $pLogs = New-Table @(80, 52, "*")
@@ -1513,7 +1590,6 @@ function Update-BambuddyStatus([bool]$Poll = $true) {
     $script:BbFieldValues["Адрес"].Text = $script:BbUrl
     $script:BbFieldValues["Поддомен"].Text = $(if (-not $domain) { "нет домена сайта" } elseif ($siteOn) { "подключён" } else { "не подключён" })
     $script:BbFieldValues["Ключ API"].Text = $(if ($config["BAMBUDDY_API_KEY"]) { "задан" } else { "не задан" })
-    Update-SlicerTile
 
     if ($Poll -and $script:CurrentPage -eq "printers") {
         if (-not $running) { $script:BbPrintersText = "-"; Show-PrinterMessage "Служба Bambuddy не запущена." $ColMuted }
@@ -1533,25 +1609,98 @@ function Update-BambuddyStatus([bool]$Poll = $true) {
     $btnBbSite.Enabled = $free -and [bool]$domain
 }
 
-# Слайсер для точной цены (install-slicer.ps1): работает в составе сервера сайта (start.ps1).
-# Пока он не установлен, плитка - ссылка «установить»; переустановка - server.bat slicer.
-function Update-SlicerTile {
-    $tile = $script:BbFieldValues["Слайсер"]
+# ---------------------------------------------------------------- слайсер: статус
+$script:SlHealth = $null      # $true / $false - ответ /health при последнем опросе, $null - не опрашивали
+$script:SlPollTick = 0
+function Update-SlicerStatus([bool]$Probe = $false) {
     $installed = Test-SlicerInstalled
-    $state = if ($installed) { Get-ServerState } else { $null }
-    $running = $state -and $state.slicerPid -and (Test-ProcAlive $state.slicerPid $state.slicerStart)
-    $tile.Text = if (-not $installed) { "установить" } elseif ($running) { "работает" } elseif ($state) { "запускается..." } else { "сервер остановлен" }
-    $tile.Enabled = -not $script:Busy -and -not $script:WebOp
-    if ($installed) { $tile.LinkArea = New-Object Windows.Forms.LinkArea(0, 0) } else { $tile.LinkArea = New-Object Windows.Forms.LinkArea(0, $tile.Text.Length) }
+    $installing = Test-Path $script:SlicerInstallFlag
+    $state = Get-ServerState
+    $running = $installed -and $state -and $state.slicerPid -and (Test-ProcAlive $state.slicerPid $state.slicerStart)
+    $config = Read-EnvFile $script:EnvFile
+
+    if ($Probe -and $running) {
+        try { $health = Invoke-BambuddyApi ("http://127.0.0.1:{0}" -f $script:SlicerPort) "/health"; $script:SlHealth = $health.status -eq "healthy" }
+        catch { $script:SlHealth = $false }
+    }
+    if (-not $running) { $script:SlHealth = $null }
+
+    if ($installing) {
+        $lblSlState.Text = "Устанавливается..."; $lblSlState.ForeColor = $ColYellow
+        $dotSl.DotColor = $ColYellow; $dotSl.Pulse = $true
+        $lblSlSub.Text = "ход установки - в журнале ниже"
+    }
+    elseif (-not $installed) {
+        $lblSlState.Text = "Не установлен"; $lblSlState.ForeColor = $ColMuted
+        $dotSl.DotColor = $ColMuted; $dotSl.Pulse = $false
+        $lblSlSub.Text = "«Установить» скачает OrcaSlicer (~170 МБ) и обёртку для Bambuddy в deploy\slicer. Без него цены на сайте примерные."
+    }
+    elseif (-not $state) {
+        $lblSlState.Text = "Остановлен"; $lblSlState.ForeColor = $ColRed
+        $dotSl.DotColor = $ColRed; $dotSl.Pulse = $false
+        $lblSlSub.Text = "запускается вместе с сервером сайта - запустите его на вкладке «Обзор»"
+    }
+    elseif (-not $running) {
+        $lblSlState.Text = "Запускается..."; $lblSlState.ForeColor = $ColYellow
+        $dotSl.DotColor = $ColYellow; $dotSl.Pulse = $true
+        $lblSlSub.Text = "если это надолго - откройте «Лог»: возможно, порт $($script:SlicerPort) занят"
+    }
+    elseif ($script:SlHealth -eq $false) {
+        $lblSlState.Text = "Не отвечает"; $lblSlState.ForeColor = $ColYellow
+        $dotSl.DotColor = $ColYellow; $dotSl.Pulse = $false
+        $lblSlSub.Text = "процесс запущен, но /health не отвечает «healthy» - откройте «Лог» или перезапустите"
+    }
+    else {
+        $lblSlState.Text = "Работает"; $lblSlState.ForeColor = $ColAccent
+        $dotSl.DotColor = $ColAccent; $dotSl.Pulse = $false
+        $lblSlSub.Text = "PID $($state.slicerPid), 127.0.0.1:$($script:SlicerPort) - перезапускается вместе с сайтом"
+    }
+
+    $script:SlFieldValues["Адрес"].Text = "127.0.0.1:$($script:SlicerPort)"
+    $script:SlFieldValues["Версия"].Text = $(if ($installed) { "OrcaSlicer $($script:SlicerOrcaVersion)" } else { "-" })
+
+    # Настройки Bambuddy читаем только по запросу (при открытии вкладки и после операций) - это сеть.
+    if ($Probe) {
+        $bb = $script:SlFieldValues["В Bambuddy"]
+        $key = $config["BAMBUDDY_API_KEY"]
+        if (-not $key) { $bb.Text = "нет ключа API"; $bb.ForeColor = $ColYellow }
+        else {
+            try {
+                $bbSettings = Invoke-BambuddyApi (Get-BambuddyBase $config) "/api/v1/settings/" $key
+                if ($bbSettings.preferred_slicer -ne "orcaslicer") { $bb.Text = "выбран Bambu Studio"; $bb.ForeColor = $ColYellow }
+                elseif (-not $bbSettings.use_slicer_api) { $bb.Text = "OrcaSlicer, API выкл."; $bb.ForeColor = $ColInk }
+                else { $bb.Text = "OrcaSlicer"; $bb.ForeColor = $ColAccent }
+                $script:Tips.SetToolTip($bb, "Bambuddy -> Настройки -> Очередь -> «Слайсер». Адрес: " + $(if ($bbSettings.orcaslicer_api_url) { $bbSettings.orcaslicer_api_url } else { "по умолчанию (localhost:3003)" }))
+            }
+            catch { $bb.Text = "Bambuddy недоступен"; $bb.ForeColor = $ColRed }
+        }
+    }
+
+    $last = $script:SlFieldValues["Проверка"]
+    $lastFile = Join-Path $script:SlicerDir "last-test.json"
+    $test = $null
+    if (Test-Path $lastFile) { try { $test = Get-Content -Path $lastFile -Raw -Encoding UTF8 | ConvertFrom-Json } catch { } }
+    if (-not $test) { $last.Text = "не проводилась"; $last.ForeColor = $ColMuted; $script:Tips.SetToolTip($last, "") }
+    else {
+        $when = ([DateTime]::Parse($test.at, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)).ToLocalTime().ToString("dd.MM HH:mm")
+        if ($test.ok) {
+            $minutes = [Math]::Round($test.seconds / 60)
+            $last.Text = "√ {0} мин · {1:0.#} г" -f $minutes, $test.grams; $last.ForeColor = $ColAccent
+            $script:Tips.SetToolTip($last, "$when - кубик 20 мм: $($test.printer) / $($test.process) / $($test.filament)")
+        }
+        else { $last.Text = "× не прошла"; $last.ForeColor = $ColRed; $script:Tips.SetToolTip($last, "$when - $($test.error)") }
+    }
+
+    $free = -not $script:Busy -and -not $script:WebOp
+    $btnSlTest.Enabled = $free -and [bool]$running
+    $btnSlRestart.Enabled = $free -and $installed -and [bool]$state
+    $btnSlInstall.Enabled = $free -and -not $installing
+    $btnSlInstall.Text = $(if ($installed) { "Переустановить" } else { "Установить" })
+    $btnSlLog.Enabled = Test-Path (Join-Path $script:LogDir "slicer-error.log")
 }
 
-function Start-SlicerInstall {
-    if ($script:Busy -or $script:WebOp) { return }
-    $answer = [Windows.Forms.MessageBox]::Show(
-        "Установить слайсер для точной цены на сайте?`n`nСкачается портативный OrcaSlicer (~170 МБ) и обёртка для Bambuddy в deploy\slicer, без Docker. Сайт продолжит работать, слайсер подхватится сам.",
-        "Слайсер", "YesNo", "Question")
-    if ($answer -ne "Yes") { return }
-    Add-Steps @((New-BambuddyStep "Установка слайсера" "slicer"))
+function New-SlicerStep([string]$Title, [string]$Arguments) {
+    return (New-ServerStep $Title $Arguments @{ Console = $consoleSl })
 }
 
 # ---------------------------------------------------------------- обновления из git
@@ -1697,6 +1846,18 @@ $btnBbRestart.Add_Click({ Add-Steps @((New-BambuddyStep "Перезапуск Ba
 $btnBbOpen.Add_Click({ if ($script:BbUrl) { Start-Process $script:BbUrl } })
 $btnBbLogs.Add_Click({ if (Test-Path $script:BbLogDir) { Start-Process explorer.exe $script:BbLogDir } })
 $btnBbSite.Add_Click({ Add-Steps @((New-BambuddyStep "Подключение поддомена Bambuddy" "bambuddy-site")) })
+$btnSlTest.Add_Click({ Add-Steps @((New-SlicerStep "Проверка нарезки" "slicer-test")) { Update-SlicerStatus $true } })
+$btnSlRestart.Add_Click({ Add-Steps @((New-SlicerStep "Перезапуск слайсера" "slicer-restart")) { Update-SlicerStatus $true } })
+$btnSlInstall.Add_Click({
+    $what = "Установить слайсер для точной цены на сайте?`n`nСкачается портативный OrcaSlicer (~170 МБ) и обёртка для Bambuddy в deploy\slicer, без Docker. Сайт продолжит работать, слайсер подхватится сам."
+    if (Test-SlicerInstalled) { $what = "Переустановить слайсер? Он будет недоступен несколько минут, сайт продолжит работать с примерными ценами." }
+    if ([Windows.Forms.MessageBox]::Show($what, "Слайсер", "YesNo", "Question") -ne "Yes") { return }
+    Add-Steps @((New-SlicerStep "Установка слайсера" "slicer")) { Update-SlicerStatus $true }
+})
+$btnSlLog.Add_Click({
+    $path = Join-Path $script:LogDir "slicer-error.log"
+    if (Test-Path $path) { Start-Process notepad.exe ('"{0}"' -f $path) }
+})
 $btnBbKey.Add_Click({
     $key = $inBbKey.Text.Trim()
     if (-not $key) { [void][Windows.Forms.MessageBox]::Show("Вставьте ключ API из Bambuddy (Settings → API Keys).", "Ключ API", "OK", "Information"); return }
@@ -1850,6 +2011,11 @@ $statusTimer.Add_Tick({
     $script:WebOp = Get-WebOperation
     Update-Status; Update-LabStatus; Update-BambuddyStatus
     if ($script:CurrentPage -eq "panel") { Update-PanelStatus }
+    if ($script:CurrentPage -eq "slicer") {
+        # раз в ~20 с ещё и спрашиваем /health и настройки Bambuddy, в остальные тики - только процесс
+        $script:SlPollTick++
+        Update-SlicerStatus (($script:SlPollTick % 10) -eq 0)
+    }
 })
 $updateTimer = New-Object Windows.Forms.Timer
 $updateTimer.Interval = 30 * 60 * 1000
@@ -1893,7 +2059,7 @@ if ($Snapshot) {
         Wait-Idle
         for ($i = 0; $i -lt 25; $i++) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 100 }
     }
-    foreach ($name in @("overview", "printers", "logs", "updates", "settings", "panel", "cleanup")) {
+    foreach ($name in @("overview", "printers", "slicer", "logs", "updates", "settings", "panel", "cleanup")) {
         Show-Page $name
         for ($i = 0; $i -lt 8; $i++) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 60 }
         $bitmap = New-Object Drawing.Bitmap($form.Width, $form.Height)

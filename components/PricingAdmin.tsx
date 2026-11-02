@@ -14,11 +14,8 @@ export type PricingMaterial = {
   name: string;
   /** The material's own hour rate; null = the shop-wide one. */
   ownHourlyRateCents: number | null;
-  printSpeedCm3PerHour: number;
   spoolPriceCents: number;
   spoolWeightG: number;
-  densityGcm3: number;
-  infillPercent: number;
   setupFeeCents: number;
   minPriceCents: number;
   leadTimeDays: number;
@@ -28,7 +25,8 @@ export type PricingMaterial = {
 };
 
 const rubles = (cents: number) => (cents / 100).toString();
-const EXAMPLE_VOLUME_CM3 = 50;
+/** The example under each card: what the slicer might say for a typical part. */
+const EXAMPLE_SLICE = { printHours: 3, plasticGrams: 50 };
 
 function MaterialPricingCard({
   material,
@@ -45,11 +43,8 @@ function MaterialPricingCard({
   const [hourlyRate, setHourlyRate] = useState(
     material.ownHourlyRateCents === null ? "" : rubles(material.ownHourlyRateCents),
   );
-  const [printSpeed, setPrintSpeed] = useState(material.printSpeedCm3PerHour.toString());
   const [spoolPrice, setSpoolPrice] = useState(rubles(material.spoolPriceCents));
   const [spoolWeight, setSpoolWeight] = useState(material.spoolWeightG.toString());
-  const [density, setDensity] = useState(material.densityGcm3.toString());
-  const [infill, setInfill] = useState(material.infillPercent.toString());
   const [setupFee, setSetupFee] = useState(rubles(material.setupFeeCents));
   const [minPrice, setMinPrice] = useState(rubles(material.minPriceCents));
   const [leadTime, setLeadTime] = useState(material.leadTimeDays.toString());
@@ -67,11 +62,8 @@ function MaterialPricingCard({
 
   const values = () => ({
     hourlyRateCents: hourlyRate.trim() === "" ? null : Math.round(Number(hourlyRate) * 100),
-    printSpeedCm3PerHour: Number(printSpeed),
     spoolPriceCents: Math.round(Number(spoolPrice) * 100),
     spoolWeightG: Math.round(Number(spoolWeight)),
-    densityGcm3: Number(density),
-    infillPercent: Math.round(Number(infill)),
     setupFeeCents: Math.round(Number(setupFee) * 100),
     minPriceCents: Math.round(Number(minPrice) * 100),
     leadTimeDays: Number(leadTime),
@@ -89,8 +81,7 @@ function MaterialPricingCard({
       ...v.finishes.map((f) => f.multiplier),
     ];
     if (numbers.some((n) => !Number.isFinite(n) || n < 0)) return false;
-    if (!(v.printSpeedCm3PerHour > 0) || !(v.spoolWeightG > 0) || !(v.densityGcm3 > 0)) return false;
-    return v.infillPercent >= 1 && v.infillPercent <= 100;
+    return v.spoolWeightG > 0;
   };
 
   const save = async () => {
@@ -123,14 +114,11 @@ function MaterialPricingCard({
   const v = values();
   const example = validate(v)
     ? computePrice({
-        volumeCm3: EXAMPLE_VOLUME_CM3,
+        sliced: EXAMPLE_SLICE,
         hourlyRateCents: v.hourlyRateCents ?? shopHourlyRateCents(rates),
         plasticMarkupPercent: rates.plasticMarkupPercent,
-        printSpeedCm3PerHour: v.printSpeedCm3PerHour,
         spoolPriceCents: v.spoolPriceCents,
         spoolWeightG: v.spoolWeightG,
-        densityGcm3: v.densityGcm3,
-        infillPercent: v.infillPercent,
         setupFeeCents: v.setupFeeCents,
         minPriceCents: v.minPriceCents,
         quantity: 1,
@@ -186,11 +174,8 @@ function MaterialPricingCard({
           "1",
           formatTemplate(t.ownHourlyPlaceholder, rubles(shopHourlyRateCents(rates))),
         )}
-        {field(t.printSpeedLabel, printSpeed, setPrintSpeed, "0.5")}
-        {field(t.infillLabel, infill, setInfill, "1")}
         {field(t.spoolPriceLabel, spoolPrice, setSpoolPrice, "10")}
         {field(t.spoolWeightLabel, spoolWeight, setSpoolWeight, "50")}
-        {field(t.densityLabel, density, setDensity, "0.01")}
         {field(t.setupFeeLabel, setupFee, setSetupFee, "1")}
         {field(t.minPriceLabel, minPrice, setMinPrice, "1")}
         {field(t.leadTimeLabel, leadTime, setLeadTime, "1")}
@@ -198,11 +183,11 @@ function MaterialPricingCard({
 
       {example && (
         <p className="mt-3 text-xs text-muted">
-          {formatTemplate(t.exampleLabel, EXAMPLE_VOLUME_CM3)}:{" "}
-          <span className="text-text">
-            {formatPrintTime(example.printHoursTotal, dict.units)}, {Math.round(example.plasticGramsTotal)}{" "}
-            {dict.units.g} — {formatCents(example.unitPriceCents, dict.locale)}
-          </span>{" "}
+          {formatTemplate(
+            t.exampleLabel,
+            `${formatPrintTime(example.printHoursTotal, dict.units)}, ${Math.round(example.plasticGramsTotal)} ${dict.units.g}`,
+          )}
+          : <span className="text-text">{formatCents(example.unitPriceCents, dict.locale)}</span>{" "}
           ({t.exampleCost} {formatCents(exampleCostCents, dict.locale)}, {t.exampleProfit}{" "}
           {formatCents(example.unitPriceCents - exampleCostCents, dict.locale)})
         </p>

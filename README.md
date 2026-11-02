@@ -33,13 +33,14 @@ the frontend and can be used by other systems too.
 
 ### Pricing
 
-- **Estimate** (`lib/pricing/engine.ts`, pure function): print time from model volume and the
-  printer's speed × hourly rate, plus plastic by weight (volume × infill × density × spool price,
-  with markup), finish multiplier, setup fee and a minimum price. Rates are set in `/admin/pricing`.
-- **Exact** (`lib/slicing.ts`): when Bambuddy is configured, the model is sliced by OrcaSlicer with the
-  admin's presets; the real print time and grams replace the estimate. Slicing takes seconds to
-  minutes, so the configurator shows the estimate (marked `≈`) and polls until the slice is ready.
-  Results are cached per model + settings in `SliceEstimate`.
+Prices come **only from the slicer** (`lib/slicing.ts`): the model is sliced by OrcaSlicer through
+Bambuddy with the admin's presets, and `lib/pricing/engine.ts` (pure function) turns its print time
+and grams into a price — hours × hourly rate + plastic × spool price (with markup), finish multiplier,
+setup fee, minimum price. Rates are set in `/admin/pricing`. Slicing takes seconds to minutes: the
+configurator shows "calculating" and polls; the customer then sees the price and plastic weight, both
+marked approximate (`≈`). A model the slicer can't price (doesn't fit, Bambuddy down, no preset) is
+still ordered, **without a price** (`priceOnRequest`, 0 ₽): staff agree it with the customer, lead
+time 2 days. Results are cached per model + settings in `SliceEstimate`.
   `/admin/pricing` → slicer has a slice log (latest quotes and test cubes, with the slicer named in each
   sliced file) and a “Test slice” button that slices a 20 mm cube the same way.
 
@@ -116,7 +117,7 @@ admin panel) into the site's env file.
 
 **Slicer (exact prices):** `server.bat slicer` installs OrcaSlicer + the slicing sidecar for Bambuddy,
 `server.bat slicer-test` checks the whole chain on a test cube, `server.bat slicer-restart` restarts it
-without touching the site. Without it the site keeps working with estimated prices.
+without touching the site. Without it orders go in without a price, to be agreed with the customer.
 
 Other commands: `bambuddy-start | bambuddy-stop | bambuddy-restart`, `db-push` (interactive schema push
 for changes `update` refuses to apply unattended), `git-check`, `cleanup-cache`.
@@ -132,7 +133,7 @@ for changes `update` refuses to apply unattended), `git-check`, `cleanup-cache`.
 | `LAB_API_KEY` | Optional bearer token for the site → lab channel |
 | `CRM_URL` | Link to lab from the admin panel; defaults to `crm.<site domain>` |
 | `BAMBUDDY_URL` | Bambuddy API, default `http://127.0.0.1:8000` |
-| `BAMBUDDY_API_KEY` | Enables exact slicer prices and color sync; without it prices are volume-based estimates |
+| `BAMBUDDY_API_KEY` | Enables exact slicer prices and color sync; without it every order is "price on request" |
 | `BAMBUDDY_PUBLIC_URL` | Public address of the Bambuddy UI for the "open Bambuddy" link |
 | `DADATA_API_KEY` | Russian address suggestions (free up to 10k requests/day); without it Photon (OpenStreetMap) is used |
 | `NEXT_PUBLIC_RUB_PER_USD` | Exchange rate for showing USD on the English UI, default `90` |

@@ -1,4 +1,5 @@
-// Customer options on top of a material's pricing: model scale and slicer infill.
+// Customer options on top of a material's pricing: model scale; and what a model the slicer
+// can't price gets instead.
 
 export const MIN_SCALE_PERCENT = 10;
 export const MAX_SCALE_PERCENT = 500;
@@ -8,17 +9,16 @@ export function scaledVolume(volumeCm3: number, scalePercent: number): number {
   return volumeCm3 * (scalePercent / 100) ** 3;
 }
 
-/** Slicer infill the material's "infill %" setting is calibrated for. */
-export const REFERENCE_INFILL_PERCENT = 25;
+/**
+ * A model the slicer couldn't slice (doesn't fit the plate, Bambuddy down, no filament preset)
+ * is still ordered, without a price: staff agree it with the customer, and it ships in this many days.
+ */
+export const PRICE_ON_REQUEST_LEAD_DAYS = 2;
 
 /**
- * A material's `infillPercent` is the share of the solid volume actually printed (walls + infill)
- * at the typical 25% slicer infill. The customer picks a slicer infill instead, so we model
- * share = walls + (100 − walls) × infill, with the walls part solved from the material setting:
- * e.g. 40% at 25% infill → walls 20% → 15% infill gives 32%, 50% → 60%, 100% → 100% (solid).
+ * Rough weight of a model with no slicer result, grams: only for the delivery estimate (parcel
+ * weight), never for a price. About 40% of a solid part is printed, at ~1.2 g/cm³.
  */
-export function effectiveFillShare(slicerInfillPercent: number, materialSharePercent: number): number {
-  const reference = REFERENCE_INFILL_PERCENT / 100;
-  const walls = Math.max(0, (materialSharePercent - REFERENCE_INFILL_PERCENT) / (1 - reference));
-  return Math.min(100, walls + ((100 - walls) * slicerInfillPercent) / 100);
+export function roughPlasticGrams(volumeCm3: number): number {
+  return volumeCm3 * 0.5;
 }

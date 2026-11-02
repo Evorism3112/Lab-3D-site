@@ -23,8 +23,9 @@ import { storage } from "@/lib/storage";
 
 // Exact print time and plastic from the slicer: the model goes to the Bambuddy library, its
 // OrcaSlicer sidecar slices it with the admin's presets, and both files are deleted right after.
-// A slice takes seconds to minutes, so quotes show the volume-based estimate until it is done
-// (the configurator polls), and the result is kept per model + settings in SliceEstimate.
+// A slice takes seconds to minutes, so the configurator shows "calculating" and polls until it is
+// done; the result is kept per model + settings in SliceEstimate. A model it can't slice is ordered
+// without a price (lib/pricing/options.ts PRICE_ON_REQUEST_LEAD_DAYS).
 
 /** Library folder the models go to while they are sliced. */
 const LIBRARY_FOLDER = "Расчёт цены (сайт)";
@@ -32,7 +33,7 @@ const POLL_INTERVAL_MS = 2_000;
 const SLICE_TIMEOUT_MS = 15 * 60_000;
 /** A queued slice nobody asked about for this long is dropped (e.g. the customer moved the scale on). */
 const ABANDON_AFTER_MS = 30_000;
-/** A failed slice is not retried for this long; quotes meanwhile use the estimate. */
+/** A failed slice is not retried for this long; quotes meanwhile say "price on request". */
 const FAILURE_TTL_MS = 30 * 60_000;
 const PRESETS_TTL_MS = 10 * 60_000;
 /** Entries kept in the admin's slice log (in memory: it starts empty after a restart). */
@@ -176,7 +177,7 @@ export type SliceResult =
   | { status: "ready"; printHours: number; plasticGrams: number }
   /** Being sliced: ask again in a few seconds. */
   | { status: "pending" }
-  /** No slicer result (off, unsupported or failed): use the volume-based estimate. */
+  /** No slicer result (off, unsupported or failed): the price is agreed with the customer. */
   | { status: "unavailable" };
 
 type FileForSlicing = { id: string; storageKey: string; format: SupportedFormat; originalName?: string };
@@ -301,7 +302,7 @@ async function runJob(job: Job): Promise<void> {
       if (Date.now() > deadline) throw new Error("Slicing timed out");
     }
   } catch (err) {
-    // E.g. the model doesn't fit the plate, or the sidecar is down: quotes keep the estimate.
+    // E.g. the model doesn't fit the plate, or the sidecar is down: the price is then agreed by hand.
     const detail = err instanceof BambuddyError ? `${err.status} ${err.message}` : err instanceof Error ? err.message : String(err);
     console.error(`Slicer quote for file ${job.fileId} failed: ${detail}`);
     Object.assign(entry, { status: "failed", finishedAt: Date.now(), error: detail });

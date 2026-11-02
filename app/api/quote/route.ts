@@ -5,9 +5,16 @@ import { availableCatalog } from "@/lib/colorSync";
 import { prisma } from "@/lib/db";
 import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
-import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
+import {
+  MAX_SCALE_PERCENT,
+  MIN_SCALE_PERCENT,
+  PRICE_ON_REQUEST_LEAD_DAYS,
+  roughPlasticGrams,
+  scaledVolume,
+} from "@/lib/pricing/options";
 import { getInfillOptions, getShopRates } from "@/lib/settings";
 import { getSliceResult } from "@/lib/slicing";
+import type { QuoteDTO } from "@/lib/types";
 
 const QuoteSchema = z.object({
   fileId: z.string(),
@@ -59,29 +66,39 @@ export async function POST(request: NextRequest) {
 
   // Starts slicing this model when there is no result yet; the client asks again while pending.
   const slice = await getSliceResult(file, material, infillPercent, scalePercent, { enqueue: true });
+  if (slice.status === "pending") {
+    return NextResponse.json({ quote: { status: "slicing" } satisfies QuoteDTO });
+  }
+  if (slice.status === "unavailable") {
+    // The slicer can't price this model: the order goes through, the price is agreed by hand.
+    const quote: QuoteDTO = {
+      status: "on_request",
+      leadTimeDays: PRICE_ON_REQUEST_LEAD_DAYS,
+      plasticGramsTotal: roughPlasticGrams(scaledVolume(Number(file.volumeCm3), scalePercent)) * quantity,
+    };
+    return NextResponse.json({ quote });
+  }
 
   try {
     const breakdown = computeMaterialPrice(
       material,
-      {
-        volumeCm3: scaledVolume(Number(file.volumeCm3), scalePercent),
-        finishMultiplier: finish ? Number(finish.multiplier) : 1,
-        quantity,
-        infillPercent,
-        sliced: slice.status === "ready" ? slice : undefined,
-      },
+      { sliced: slice, finishMultiplier: finish ? Number(finish.multiplier) : 1, quantity },
       color,
       rates,
     );
-
-    return NextResponse.json({
-      quote: {
-        ...breakdown,
-        slicing: slice.status === "pending",
-        currency: "rub",
-        leadTimeDays: material.leadTimeDays,
-      },
-    });
+    const quote: QuoteDTO = {
+      status: "ready",
+      printHoursTotal: breakdown.printHoursTotal,
+      plasticGramsTotal: breakdown.plasticGramsTotal,
+      unitPriceCents: breakdown.unitPriceCents,
+      totalPriceCents: breakdown.totalPriceCents,
+      materialCostCents: breakdown.materialCostCents,
+      setupFeeCents: breakdown.setupFeeCents,
+      minPriceFloorApplied: breakdown.minPriceFloorApplied,
+      currency: "rub",
+      leadTimeDays: material.leadTimeDays,
+    };
+    return NextResponse.json({ quote });
   } catch (err) {
     if (err instanceof PricingError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

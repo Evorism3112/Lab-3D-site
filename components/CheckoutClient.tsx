@@ -58,8 +58,15 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
       : "";
   const phoneDigits = form.phone.replace(/\D/g, "").length;
   // Ozon prices a parcel for a recipient phone, so it waits for one.
+  // The parcel weight (and declared value) for the delivery estimate; none while the slicer works.
+  const parcel =
+    quote?.status === "ready"
+      ? { weightG: quote.plasticGramsTotal, goodsRub: quote.totalPriceCents / 100 }
+      : quote?.status === "on_request"
+        ? { weightG: quote.plasticGramsTotal, goodsRub: 0 }
+        : null;
   const canQuoteDelivery =
-    Boolean(quote && addressLine) && QUOTED_SERVICES.includes(form.service) && (form.service !== "Озон" || phoneDigits >= 10);
+    Boolean(parcel && addressLine) && QUOTED_SERVICES.includes(form.service) && (form.service !== "Озон" || phoneDigits >= 10);
   const deliveryKey = canQuoteDelivery ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}` : "";
   const pickedPoint = deliveryPoint?.key === deliveryKey ? deliveryPoint.id : undefined;
   const requestKey = `${deliveryKey}|${pickedPoint ?? ""}`;
@@ -67,7 +74,7 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
   const isQuotingDelivery = Boolean(deliveryKey) && delivery?.key !== requestKey;
 
   useEffect(() => {
-    if (!deliveryKey || !quote) return;
+    if (!deliveryKey || !parcel) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       fetch("/api/delivery/quote", {
@@ -79,8 +86,8 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
           address: addressLine,
           point: pickedPoint,
           phone: form.phone || undefined,
-          weightG: quote.plasticGramsTotal,
-          goodsTotalRub: quote.totalPriceCents / 100,
+          weightG: parcel.weightG,
+          goodsTotalRub: parcel.goodsRub,
         }),
       })
         .then((res) => (res.ok ? res.json() : { quote: null }))
@@ -100,7 +107,7 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
   // Asked again while the slicer works on the exact price, so the order goes out at the price shown.
   const [pollTick, setPollTick] = useState(0);
   useEffect(() => {
-    if (!quote?.slicing) return;
+    if (quote?.status !== "slicing") return;
     const timeout = setTimeout(() => setPollTick((n) => n + 1), 3000);
     return () => clearTimeout(timeout);
   }, [quote, pollTick]);
@@ -167,15 +174,19 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
         <div className="flex items-baseline justify-between">
           <span className="text-sm text-muted">{t.orderTotal}</span>
           <span className="text-xl font-bold text-text">
-            {quote ? `${quote.sliced ? "" : "≈ "}${formatCents(quote.totalPriceCents, dict.locale)}` : "…"}
+            {quote?.status === "ready"
+              ? `≈ ${formatCents(quote.totalPriceCents, dict.locale)}`
+              : quote?.status === "on_request"
+                ? dict.configure.priceOnRequest
+                : "…"}
           </span>
         </div>
         <p className="mt-2 text-xs text-muted">
-          {quote?.sliced
-            ? dict.configure.slicedNote
-            : quote?.slicing
-              ? dict.configure.slicingNote
-              : dict.configure.estimateNote}
+          {quote?.status === "ready"
+            ? dict.configure.estimateNote
+            : quote?.status === "on_request"
+              ? dict.configure.priceOnRequestNote
+              : dict.configure.slicingNote}
         </p>
       </div>
 
@@ -275,7 +286,7 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
             </div>
           </div>
         )}
-        {!isQuotingDelivery && currentDelivery?.price && quote && (
+        {!isQuotingDelivery && currentDelivery?.price && parcel && (
           <div className="card flex flex-col gap-1 p-4 text-sm">
             {currentDelivery.point && <p className="text-xs text-muted">{currentDelivery.point.label}</p>}
             <div className="flex items-baseline justify-between">
@@ -292,19 +303,22 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
               </span>
               <span className="text-text">≈ {formatAmount(currentDelivery.price.total, dict.locale)}</span>
             </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-muted">{t.deliveryTotal}</span>
-              <span className="font-bold text-text">
-                ≈ {formatAmount(quote.totalPriceCents / 100 + currentDelivery.price.total, dict.locale)}
-              </span>
-            </div>
+            {/* No total when the print price is still to be agreed. */}
+            {quote?.status === "ready" && (
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted">{t.deliveryTotal}</span>
+                <span className="font-bold text-text">
+                  ≈ {formatAmount(quote.totalPriceCents / 100 + currentDelivery.price.total, dict.locale)}
+                </span>
+              </div>
+            )}
             <p className="mt-1 text-xs text-muted">{t.deliveryNote}</p>
           </div>
         )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
-        <button type="submit" disabled={isSubmitting || !quote} className="btn btn-primary w-full">
+        <button type="submit" disabled={isSubmitting || !quote || quote.status === "slicing"} className="btn btn-primary w-full">
           {isSubmitting ? t.redirecting : t.payNow}
         </button>
       </form>

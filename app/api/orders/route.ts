@@ -9,7 +9,7 @@ import { OrderStatus } from "@/lib/generated/prisma/client";
 import { pushOrderToLab, quoteDeliveryFromLab } from "@/lib/labClient";
 import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
-import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
+import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, roughPlasticGrams, scaledVolume } from "@/lib/pricing/options";
 import { getInfillOptions, getShopRates } from "@/lib/settings";
 import { serializeOrder } from "@/lib/serializers";
 import { getSliceResult } from "@/lib/slicing";
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
     infillPercent: number;
     unitPriceCents: number;
     totalPriceCents: number;
+    priceOnRequest: boolean;
   }[] = [];
   let plasticGrams = 0;
 
@@ -100,31 +101,34 @@ export async function POST(request: NextRequest) {
 
     // The slicer's result when it is ready — the same one the quote showed; never waits for it.
     const slice = await getSliceResult(file, material, infillPercent, item.scalePercent, { enqueue: false });
+    const base = {
+      fileId: file.id,
+      materialId: material.id,
+      finishId: finish?.id ?? null,
+      colorId: color?.id ?? null,
+      quantity: item.quantity,
+      scalePercent: item.scalePercent,
+      infillPercent,
+    };
+    if (slice.status !== "ready") {
+      // No slicer price: the order still goes through, staff agree the price with the customer.
+      resolvedItems.push({ ...base, unitPriceCents: 0, totalPriceCents: 0, priceOnRequest: true });
+      plasticGrams += roughPlasticGrams(scaledVolume(Number(file.volumeCm3), item.scalePercent)) * item.quantity;
+      continue;
+    }
 
     try {
       const breakdown = computeMaterialPrice(
         material,
-        {
-          volumeCm3: scaledVolume(Number(file.volumeCm3), item.scalePercent),
-          finishMultiplier: finish ? Number(finish.multiplier) : 1,
-          quantity: item.quantity,
-          infillPercent,
-          sliced: slice.status === "ready" ? slice : undefined,
-        },
+        { sliced: slice, finishMultiplier: finish ? Number(finish.multiplier) : 1, quantity: item.quantity },
         color,
         rates,
       );
-
       resolvedItems.push({
-        fileId: file.id,
-        materialId: material.id,
-        finishId: finish?.id ?? null,
-        colorId: color?.id ?? null,
-        quantity: item.quantity,
-        scalePercent: item.scalePercent,
-        infillPercent,
+        ...base,
         unitPriceCents: breakdown.unitPriceCents,
         totalPriceCents: breakdown.totalPriceCents,
+        priceOnRequest: false,
       });
       plasticGrams += breakdown.plasticGramsTotal;
     } catch (err) {

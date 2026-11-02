@@ -31,6 +31,10 @@ export async function POST(request: NextRequest) {
   if (order.status !== "AWAITING_PAYMENT") {
     return NextResponse.json({ error: "Order is not awaiting payment" }, { status: 400 });
   }
+  // Its price is still to be agreed with the customer.
+  if (order.items.some((item) => item.priceOnRequest)) {
+    return NextResponse.json({ error: "Order has items without a price" }, { status: 400 });
+  }
 
   const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 

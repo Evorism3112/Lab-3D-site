@@ -55,11 +55,13 @@ model Material {
 
   // Time-based pricing. NULL = use the recommended value for this material (lib/pricing/defaults.ts).
   hourlyRateCents      Int?     // printer time, kopecks per hour
-  printSpeedCm3PerHour Decimal? @db.Decimal(8, 2) // model volume printed per hour
   spoolPriceCents      Int?     // price of one spool, kopecks
   spoolWeightG         Int?     // grams of plastic on the spool
+  // Legacy: inputs of the volume-based estimate, gone since prices come only from the slicer;
+  // kept so `prisma db push` never drops data.
+  printSpeedCm3PerHour Decimal? @db.Decimal(8, 2)
   densityGcm3          Decimal? @db.Decimal(6, 3)
-  infillPercent        Int?     // share of the solid model volume actually printed
+  infillPercent        Int?
   setupFeeCents Int     @default(0)
   minPriceCents Int     @default(500)
   leadTimeDays  Int     @default(2)
@@ -211,6 +213,9 @@ model OrderItem {
   infillPercent  Int?
   unitPriceCents Int
   totalPriceCents Int
+  // The slicer couldn't price this model: both prices are 0 and staff agree the price with the
+  // customer (lib/pricing/options.ts PRICE_ON_REQUEST_LEAD_DAYS).
+  priceOnRequest Boolean @default(false)
 
   order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   file     UploadedFile @relation(fields: [fileId], references: [id])

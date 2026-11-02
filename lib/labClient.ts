@@ -1,4 +1,5 @@
 import { localizeCatalogText } from "@/lib/i18n/catalog";
+import { PRICE_ON_REQUEST_LEAD_DAYS } from "@/lib/pricing/options";
 import type { OrderDTO } from "@/lib/types";
 
 // lab (D:\GitHub\lab) is the fulfillment/shipping tool — every paid order ends up there.
@@ -67,6 +68,15 @@ function toLabPayload(order: OrderDTO) {
     // The estimate shown at checkout; staff confirm the exact amount with the customer.
     delivery_price: order.shipping.deliveryPrice ?? undefined,
     payment_status: "unpaid",
+    // Items the slicer couldn't price go in at 0: staff agree the price (and the 2-day term).
+    ...(order.items.some((item) => item.priceOnRequest)
+      ? {
+          notes: [
+            `Цена не рассчитана слайсером — согласовать с клиентом. Срок изготовления: ${PRICE_ON_REQUEST_LEAD_DAYS} дня.`,
+            ...order.items.filter((item) => item.priceOnRequest).map((item) => `• ${item.file.originalName}`),
+          ].join("\n"),
+        }
+      : {}),
     // Lab staff work in Russian, so color/finish go over in Russian.
     items: order.items.map((item) => {
       const finishName = item.finish ? localizeCatalogText(item.finish.name, "ru", item.finish.nameRu) : null;
@@ -80,6 +90,7 @@ function toLabPayload(order: OrderDTO) {
           item.material.name + (finishName ? ` — ${finishName}` : ""),
           item.infillPercent !== null ? `заполнение ${item.infillPercent}%` : null,
           item.scalePercent !== 100 ? `масштаб ${item.scalePercent}%` : null,
+          item.priceOnRequest ? "ЦЕНА ПО ДОГОВОРЁННОСТИ" : null,
         ]
           .filter(Boolean)
           .join(" · "),

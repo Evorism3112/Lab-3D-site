@@ -43,22 +43,32 @@ export function materialImageUrl(id: string, imageKey: string | null): string | 
   return imageKey ? `/api/materials/${id}/image?v=${encodeURIComponent(imageKey)}` : null;
 }
 
-export type QuoteDTO = {
-  /** Estimated printing time of the whole order (hours) and plastic use (grams). */
-  printHoursTotal: number;
-  plasticGramsTotal: number;
-  unitPriceCents: number;
-  totalPriceCents: number;
-  materialCostCents: number;
-  setupFeeCents: number;
-  minPriceFloorApplied: boolean;
-  /** Time and plastic come from the slicer, so the price is exact rather than estimated. */
-  sliced: boolean;
-  /** The slicer is still working on it: ask again in a few seconds for the exact price. */
-  slicing: boolean;
-  currency: string;
-  leadTimeDays: number;
-};
+/**
+ * A price comes only from the slicer. While it works the quote is "slicing" (ask again in a few
+ * seconds); when it can't slice the model the order is still possible, but "on_request": staff
+ * agree the price with the customer.
+ */
+export type QuoteDTO =
+  | {
+      status: "ready";
+      /** Printing time of the whole order (hours) and plastic use (grams), from the slicer. */
+      printHoursTotal: number;
+      plasticGramsTotal: number;
+      unitPriceCents: number;
+      totalPriceCents: number;
+      materialCostCents: number;
+      setupFeeCents: number;
+      minPriceFloorApplied: boolean;
+      currency: string;
+      leadTimeDays: number;
+    }
+  | { status: "slicing" }
+  | {
+      status: "on_request";
+      leadTimeDays: number;
+      /** Rough parcel weight for the delivery estimate only, grams. */
+      plasticGramsTotal: number;
+    };
 
 export type OrderItemDTO = {
   id: string;
@@ -67,8 +77,11 @@ export type OrderItemDTO = {
   scalePercent: number;
   /** Slicer infill in %; null on orders placed before it could be picked. */
   infillPercent: number | null;
+  /** 0 when priceOnRequest. */
   unitPriceCents: number;
   totalPriceCents: number;
+  /** The slicer couldn't price the model: staff agree the price with the customer. */
+  priceOnRequest: boolean;
   file: { id: string; originalName: string; format: "STL" | "OBJ"; volumeCm3: number | null };
   material: { id: string; name: string };
   color: { id: string; name: string; nameRu: string | null; variant: string } | null;
@@ -92,6 +105,7 @@ export type OrderDTO = {
     /** Delivery estimate at checkout, rubles; null when it couldn't be calculated. */
     deliveryPrice: number | null;
   };
+  /** Sum of the priced items; items with priceOnRequest are not in it. */
   totalCents: number;
   items: OrderItemDTO[];
   createdAt: string;

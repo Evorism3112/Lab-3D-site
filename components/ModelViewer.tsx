@@ -114,6 +114,24 @@ function ObjMesh({ url, ...material }: { url: string } & MaterialProps) {
   );
 }
 
+/** Relative luminance (0 black – 1 white) of a "#rrggbb" color; unknown formats count as light. */
+function luminance(hex: string): number {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return 1;
+  const channel = (i: number) => {
+    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+}
+
+/**
+ * A black or dark part vanishes on the dark site background, so it gets a light one — a muted
+ * grey, not white, so it doesn't glare next to the dark page.
+ */
+const LIGHT_BACKDROP = "radial-gradient(circle at 50% 38%, #c4c8cc 0%, #a9aeb3 55%, #8f9499 100%)";
+const DARK_COLOR_LUMINANCE = 0.06;
+
 export function ModelViewer({
   fileUrl,
   format,
@@ -129,9 +147,13 @@ export function ModelViewer({
   smooth?: boolean;
 }) {
   const material = { look, color, smooth };
+  const darkPart = luminance(color) < DARK_COLOR_LUMINANCE;
 
   return (
-    <div className="h-full w-full overflow-hidden rounded-2xl border border-border bg-bg-soft">
+    <div
+      className="h-full w-full overflow-hidden rounded-2xl border border-border bg-bg-soft transition-[background] duration-500"
+      style={darkPart ? { background: LIGHT_BACKDROP } : undefined}
+    >
       <Canvas camera={{ position: [80, 60, 80], fov: 40 }}>
         {/* Soft studio reflections built locally (no HDR download), so gloss has something to reflect. */}
         <Environment resolution={256} environmentIntensity={0.5}>

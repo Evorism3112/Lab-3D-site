@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { ModelViewer } from "@/components/ModelViewer";
-import { formatDays, formatPrintTime, formatTemplate, type Dictionary } from "@/lib/i18n/translations";
+import { formatDays, formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import { formatAmount, formatCents } from "@/lib/money";
 import { isSmoothFinish, plasticLook } from "@/lib/plasticLook";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scaledVolume } from "@/lib/pricing/options";
@@ -98,7 +98,7 @@ export function ConfigureClient({
   }, [file.id, material, colorId, finishId, quantity, scale, infill, pollTick]);
 
   useEffect(() => {
-    if (!quote?.slicing) return;
+    if (quote?.status !== "slicing") return;
     const timeout = setTimeout(() => setPollTick((n) => n + 1), 3000);
     return () => clearTimeout(timeout);
   }, [quote]);
@@ -320,40 +320,47 @@ export function ConfigureClient({
 
         <div className="card mt-4 shrink-0 p-4">
           {quoteError && <p className="text-sm text-danger">{quoteError}</p>}
-          {!quoteError && (
+          {!quoteError && (!quote || quote.status === "slicing") && (
+            // Only the slicer prices a model: until it is done there is no number to show.
+            <div className="flex items-center gap-3" role="status">
+              <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-border border-t-accent" />
+              <div>
+                <p className="text-sm font-medium text-text">{t.slicingTitle}</p>
+                <p className="text-xs text-muted">{t.slicingNote}</p>
+              </div>
+            </div>
+          )}
+          {!quoteError && quote?.status === "ready" && (
             <>
               <div className="flex items-baseline justify-between">
-                <span className="text-sm text-muted">{quote?.sliced ? t.slicedTotal : t.estimatedTotal}</span>
-                <span className="text-2xl font-bold text-text">
-                  {quote
-                    ? `${quote.sliced ? "" : "≈ "}${formatCents(quote.totalPriceCents, dict.locale)}`
-                    : isQuoting
-                      ? "…"
-                      : "—"}
-                </span>
+                <span className="text-sm text-muted">{t.estimatedTotal}</span>
+                <span className="text-2xl font-bold text-text">≈ {formatCents(quote.totalPriceCents, dict.locale)}</span>
               </div>
-              {quote && (
-                <>
-                  <p className="mt-1 text-xs text-muted">
-                    {formatCents(quote.unitPriceCents, dict.locale)} / {t.perUnit} ·{" "}
-                    {formatTemplate(t.shipsIn, formatDays(quote.leadTimeDays, dict.locale))}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    {quote.sliced ? t.printTime : t.estPrintTime} {formatPrintTime(quote.printHoursTotal, dict.units)} ·{" "}
-                    {quote.sliced ? t.plastic : t.estPlastic} {Math.max(1, Math.round(quote.plasticGramsTotal))}{" "}
-                    {dict.units.g}
-                  </p>
-                  <p className="mt-2 text-xs text-muted">
-                    {quote.sliced ? t.slicedNote : quote.slicing ? t.slicingNote : t.estimateNote}
-                  </p>
-                </>
-              )}
+              <p className="mt-1 text-xs text-muted">
+                ≈ {formatCents(quote.unitPriceCents, dict.locale)} / {t.perUnit} ·{" "}
+                {formatTemplate(t.shipsIn, formatDays(quote.leadTimeDays, dict.locale))}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {t.estPlastic} {Math.max(1, Math.round(quote.plasticGramsTotal))} {dict.units.g}
+              </p>
+              <p className="mt-2 text-xs text-muted">{t.estimateNote}</p>
+            </>
+          )}
+          {!quoteError && quote?.status === "on_request" && (
+            <>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm text-muted">{t.estimatedTotal}</span>
+                <span className="text-lg font-bold text-text">{t.priceOnRequest}</span>
+              </div>
+              <p className="mt-1 text-xs text-muted">{formatTemplate(t.shipsIn, formatDays(quote.leadTimeDays, dict.locale))}</p>
+              <p className="mt-2 text-xs text-muted">{t.priceOnRequestNote}</p>
             </>
           )}
 
           <button
             type="button"
-            disabled={!quote}
+            // Orders wait for the slicer: an order placed meanwhile would go out without a price.
+            disabled={!quote || quote.status === "slicing" || isQuoting}
             onClick={handleContinue}
             className="btn btn-primary mt-4 w-full"
           >

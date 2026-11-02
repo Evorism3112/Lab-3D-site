@@ -1,0 +1,586 @@
+#!/usr/bin/env bash
+# Лаборатория 3Д на Linux: управление сервером - то же, что server.bat / Lab3D.exe на Windows.
+#
+#   lab3d                      # статус
+#   lab3d start|stop|restart [all|site|crm|slicer|panel|bambuddy|caddy]
+#   lab3d logs [site|site-errors|crm|crm-errors|slicer|panel|caddy|bambuddy]
+#   lab3d update [--force]     # git pull, зависимости, база, сборка, перезапуск
+#   lab3d backup [папка]       # все данные сайта и «Заказов» в один архив
+#   lab3d slicer               # установить / переустановить OrcaSlicer для цен
+#   lab3d slicer-test          # проверить нарезку целиком (слайсер -> Bambuddy -> кубик)
+#   lab3d db-push              # применить схему базы вручную (с вопросом о рисках)
+#   lab3d panel-password       # пароль веб-панели (panel.<домен>)
+#   lab3d panel-on|panel-off   # включить / выключить веб-панель
+#   lab3d config               # пересоздать службы systemd и конфиг Caddy
+#
+# deploy/linux/install.sh ставит копию этого файла в /usr/local/sbin/lab3d (владелец root, путь к
+# проекту вписан). Копия, а не ссылка: файлы проекта принадлежат пользователю lab3d, от имени
+# которого работает сайт, и root не должен исполнять то, что этот пользователь может поменять.
+set -euo pipefail
+
+ROOT="@LAB3D_ROOT@"
+# Запуск прямо из репозитория (до установки): проект - на две папки выше.
+[[ $ROOT == "@LAB3D_ROOT@" ]] && ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)
+
+APP_USER=lab3d
+APP_HOME=/var/lib/lab3d
+ENV_FILE=$ROOT/.env.production
+LAB=$ROOT/lab
+LAB_ENV=$LAB/.env
+LOG_DIR=$ROOT/deploy/logs
+LAB_LOG_DIR=$LAB/deploy/logs
+SLICER_DIR=$ROOT/deploy/slicer
+CADDY_FILE=$ROOT/deploy/Caddyfile
+SITES_D=$ROOT/deploy/sites.d
+INSTALLED_CLI=/usr/local/sbin/lab3d
+SUDOERS=/etc/sudoers.d/lab3d-panel
+UNIT_DIR=/etc/systemd/system
+
+# ---------------------------------------------------------------- вывод
+
+if [[ -t 1 ]]; then C_STEP=$'\e[36m' C_OK=$'\e[32m' C_WARN=$'\e[33m' C_BAD=$'\e[31m' C_DIM=$'\e[90m' C_END=$'\e[0m'
+else C_STEP="" C_OK="" C_WARN="" C_BAD="" C_DIM="" C_END=""; fi
+step() { printf '%s==> %s%s\n' "$C_STEP" "$*" "$C_END"; }
+ok() { printf '%s    %s%s\n' "$C_OK" "$*" "$C_END"; }
+warn() { printf '%s    ! %s%s\n' "$C_WARN" "$*" "$C_END"; }
+bad() { printf '%s    × %s%s\n' "$C_BAD" "$*" "$C_END" >&2; }
+die() { bad "$*"; exit 1; }
+dim() { printf '%s    %s%s\n' "$C_DIM" "$*" "$C_END"; }
+
+need_root() { [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"; }
+
+# ---------------------------------------------------------------- .env файлы
+# Формат как у Windows-скриптов: KEY="VALUE". Через source их читать нельзя: в значениях бывает $
+# (хэш пароля панели), bash бы его раскрыл.
+
+env_get() { # FILE KEY
+  [[ -f $1 ]] || return 0
+  tr -d '\r' < "$1" | sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*//p" | tail -n1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/'
+}
+
+env_set() { # FILE KEY VALUE
+  local file=$1 key=$2 value=$3 tmp
+  [[ $value != *'"'* && $value != *$'\n'* ]] || die "Недопустимое значение для $key"
+  tmp=$(mktemp)
+  if [[ -f $file ]]; then
+    awk -v k="$key" -v v="$value" 'BEGIN { done = 0 }
+      $0 ~ "^[[:space:]]*" k "[[:space:]]*=" { if (!done) print k "=\"" v "\""; done = 1; next }
+      { print } END { if (!done) print k "=\"" v "\"" }' "$file" > "$tmp"
+    cat "$tmp" > "$file"
+  else
+    printf '# Created by deploy/linux - safe to edit; restart to apply.\n%s="%s"\n' "$key" "$value" > "$file"
+  fi
+  rm -f "$tmp"
+}
+
+env_unset() { # FILE KEY
+  [[ -f $1 ]] || return 0
+  local tmp; tmp=$(mktemp)
+  grep -v "^[[:space:]]*$2[[:space:]]*=" "$1" > "$tmp" || true
+  cat "$tmp" > "$1"; rm -f "$tmp"
+}
+
+# KEY=VALUE для env(1): переменные .env.production для node/npm/prisma.
+env_args() { # FILE
+  [[ -f $1 ]] || return 0
+  tr -d '\r' < "$1" | sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*=[[:space:]]*\(.*\)$/\1=\2/p' |
+    sed -e 's/[[:space:]]*$//' -e 's/^\([^=]*\)="\(.*\)"$/\1=\2/'
+}
+
+# Команда от имени пользователя сайта, с переменными .env.production и в папке проекта.
+as_app() {
+  local -a vars=()
+  mapfile -t vars < <(env_args "$ENV_FILE")
+  ( cd "$ROOT" && runuser -u "$APP_USER" -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$APP_HOME" LANG=C.UTF-8 "${vars[@]}" "$@" )
+}
+
+# То же, но без переменных сайта и в указанной папке (lab, слайсер).
+as_user_in() { # DIR CMD...
+  local dir=$1; shift
+  ( cd "$dir" && runuser -u "$APP_USER" -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$APP_HOME" LANG=C.UTF-8 "$@" )
+}
+
+domain() { env_get "$ENV_FILE" DEPLOY_DOMAIN; }
+base_domain() { local d; d=$(domain); echo "${d#www.}"; }
+app_port() { local p; p=$(env_get "$ENV_FILE" APP_PORT); echo "${p:-3000}"; }
+crm_port() { local p; p=$(env_get "$LAB_ENV" PORT); echo "${p:-3001}"; }
+panel_port() { local p; p=$(env_get "$ENV_FILE" PANEL_PORT); echo "${p:-3100}"; }
+bambuddy_port() {
+  local url port; url=$(env_get "$ENV_FILE" BAMBUDDY_URL)
+  port=$(sed -n 's#^[a-z]*://[^/:]*:\([0-9][0-9]*\).*#\1#p' <<<"$url")
+  echo "${port:-8000}"
+}
+panel_enabled() { [[ $(env_get "$ENV_FILE" PANEL_ENABLED) == 1 ]]; }
+
+# Версии слайсера закреплены в deploy/lib.ps1 - одно место для Windows и Linux.
+pinned() { sed -n "s/^\$script:$1 = \"\([^\"]*\)\".*/\1/p" "$ROOT/deploy/lib.ps1" | head -n1; }
+slicer_port() { sed -n 's/^\$script:SlicerPort = \([0-9]*\).*/\1/p' "$ROOT/deploy/lib.ps1" | head -n1; }
+slicer_tag() { echo "orca-$(pinned SlicerOrcaVersion)|$(pinned SlicerApiCommit)"; }
+slicer_installed() { [[ -x $SLICER_DIR/orca/AppRun && -f $SLICER_DIR/api/dist/src/index.js ]]; }
+slicer_current() { slicer_installed && [[ -f $SLICER_DIR/version.txt && $(<"$SLICER_DIR/version.txt") == "$(slicer_tag)" ]]; }
+
+# ---------------------------------------------------------------- службы
+
+unit_of() {
+  case $1 in
+    site) echo lab3d-site ;; crm) echo lab3d-crm ;; slicer) echo lab3d-slicer ;; panel) echo lab3d-panel ;;
+    bambuddy) echo bambuddy ;; caddy) echo caddy ;;
+    *) die "Неизвестная служба: $1 (site, crm, slicer, panel, bambuddy, caddy)" ;;
+  esac
+}
+unit_exists() { [[ -n $(systemctl list-unit-files --no-legend "$1.service" 2>/dev/null) ]]; }
+unit_state() { systemctl is-active "$1" 2>/dev/null || true; }
+
+# Логи служб - файлами, как на Windows: их же показывает веб-панель.
+ensure_log_files() {
+  install -d -o "$APP_USER" -g "$APP_USER" "$LOG_DIR" "$LAB_LOG_DIR"
+  local f
+  for f in "$LOG_DIR"/{next,next-error,slicer,slicer-error,panel,panel-error}.log "$LAB_LOG_DIR"/{app,app-error}.log; do
+    [[ -e $f ]] || install -m 640 -o "$APP_USER" -g "$APP_USER" /dev/null "$f"
+  done
+}
+
+write_unit() { # NAME DESCRIPTION WORKDIR EXEC LOG ERRLOG [EXTRA...] - Condition* lines go to [Unit]
+  local name=$1 desc=$2 dir=$3 exec=$4 log=$5 err=$6 line; shift 6
+  {
+    echo "# Generated by lab3d config - edits are overwritten."
+    echo "[Unit]"
+    echo "Description=$desc"
+    echo "After=network-online.target postgresql.service"
+    echo "Wants=network-online.target"
+    for line in "$@"; do [[ $line == Condition* ]] && echo "$line"; done
+    echo "[Service]"
+    echo "Type=simple"
+    echo "User=$APP_USER"
+    echo "Group=$APP_USER"
+    echo "WorkingDirectory=$dir"
+    for line in "$@"; do [[ $line == Condition* ]] || echo "$line"; done
+    echo "ExecStart=$exec"
+    echo "Restart=always"
+    echo "RestartSec=3"
+    echo "StandardOutput=append:$log"
+    echo "StandardError=append:$err"
+    echo "[Install]"
+    echo "WantedBy=multi-user.target"
+  } > "$UNIT_DIR/$name.service"
+}
+
+write_units() {
+  local node; node=$(command -v node) || die "Node.js не найден"
+  write_unit lab3d-site "Лаборатория 3Д: сайт" "$ROOT" \
+    "$node $ROOT/node_modules/next/dist/bin/next start -H 127.0.0.1 -p $(app_port)" \
+    "$LOG_DIR/next.log" "$LOG_DIR/next-error.log" \
+    "EnvironmentFile=$ENV_FILE" "Environment=NODE_ENV=production" "Environment=HOME=$APP_HOME"
+  write_unit lab3d-crm "Лаборатория 3Д: «Заказы» (CRM)" "$LAB" "$node server.js" \
+    "$LAB_LOG_DIR/app.log" "$LAB_LOG_DIR/app-error.log" \
+    "EnvironmentFile=$LAB_ENV" "Environment=NODE_ENV=production" "Environment=HOME=$APP_HOME"
+  write_unit lab3d-slicer "Лаборатория 3Д: OrcaSlicer для цен (обёртка для Bambuddy)" "$SLICER_DIR/api" \
+    "$node $ROOT/deploy/slicer-api.mjs" "$LOG_DIR/slicer.log" "$LOG_DIR/slicer-error.log" \
+    "ConditionPathExists=$SLICER_DIR/api/dist/src/index.js" \
+    "Environment=NODE_ENV=production" "Environment=HOME=$APP_HOME" "Environment=PORT=$(slicer_port)" \
+    "Environment=ORCASLICER_PATH=$SLICER_DIR/orca/AppRun" "Environment=DATA_PATH=$SLICER_DIR/data"
+  write_unit lab3d-panel "Лаборатория 3Д: веб-панель управления" "$ROOT" "$node $ROOT/deploy/panel.mjs" \
+    "$LOG_DIR/panel.log" "$LOG_DIR/panel-error.log" "Environment=HOME=$APP_HOME"
+  systemctl daemon-reload
+}
+
+caddy_site() { # HOST PORT BODY_LIMIT [extra header line]
+  cat <<EOF
+$1 {
+	encode zstd gzip
+	request_body {
+		max_size $3
+	}
+	reverse_proxy 127.0.0.1:$2
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server${4:+
+		$4}
+	}
+}
+
+EOF
+}
+
+write_caddy() {
+  local d base crm
+  d=$(domain); base=$(base_domain); crm=$(env_get "$LAB_ENV" DEPLOY_DOMAIN)
+  install -d -o "$APP_USER" -g "$APP_USER" "$SITES_D"
+  {
+    echo "# Generated by lab3d config from .env.production and lab/.env - edits are overwritten."
+    echo "# Own additions go to deploy/sites.d/*.caddy."
+    echo
+    if [[ -n $d ]]; then
+      caddy_site "$d" "$(app_port)" 600MB
+      [[ -n $crm ]] && caddy_site "$crm" "$(crm_port)" 100MB
+      caddy_site "bambu.$base" "$(bambuddy_port)" 1GB
+      panel_enabled && caddy_site "panel.$base" "$(panel_port)" 1MB 'X-Robots-Tag "noindex, nofollow"'
+    else
+      # Без домена - HTTPS на IP с сертификатом от собственного центра Caddy (браузер предупредит).
+      local ip; ip=$(hostname -I | awk '{print $1}')
+      printf '{\n\tlocal_certs\n\tdefault_sni %s\n}\n\nhttps://%s {\n\ttls internal\n\trequest_body {\n\t\tmax_size 600MB\n\t}\n\treverse_proxy 127.0.0.1:%s\n}\n\n' "$ip" "$ip" "$(app_port)"
+    fi
+    echo "import $SITES_D/*.caddy"
+  } > "$CADDY_FILE"
+  chmod 644 "$CADDY_FILE"
+  if [[ ! -f /etc/caddy/Caddyfile.lab3d-orig && -f /etc/caddy/Caddyfile ]] && ! grep -q "$CADDY_FILE" /etc/caddy/Caddyfile; then
+    cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.lab3d-orig
+  fi
+  printf '# Managed by lab3d: the real config is %s\nimport %s\n' "$CADDY_FILE" "$CADDY_FILE" > /etc/caddy/Caddyfile
+  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 ||
+    die "Caddyfile неверен: caddy validate --config /etc/caddy/Caddyfile"
+  if systemctl is-active -q caddy; then systemctl reload caddy; else systemctl enable --now caddy >/dev/null 2>&1 || true; fi
+}
+
+write_logrotate() {
+  cat > /etc/logrotate.d/lab3d <<EOF
+$LOG_DIR/*.log $LAB_LOG_DIR/*.log {
+	su $APP_USER $APP_USER
+	size 5M
+	rotate 3
+	compress
+	missingok
+	notifempty
+	copytruncate
+}
+EOF
+}
+
+# Веб-панель работает от lab3d и может звать только «lab3d panel-action <имя>» - список действий
+# зашит здесь, в копии этого файла у root.
+write_sudoers() {
+  local tmp; tmp=$(mktemp)
+  echo "$APP_USER ALL=(root) NOPASSWD: $INSTALLED_CLI panel-action *" > "$tmp"
+  visudo -cqf "$tmp" || die "sudoers не прошёл проверку"
+  install -m 440 "$tmp" "$SUDOERS"
+  rm -f "$tmp"
+}
+
+cmd_config() {
+  need_root config
+  step "Службы systemd"
+  ensure_log_files
+  write_units
+  systemctl enable lab3d-site lab3d-crm lab3d-slicer >/dev/null 2>&1
+  if panel_enabled; then systemctl enable lab3d-panel >/dev/null 2>&1; else systemctl disable --now lab3d-panel >/dev/null 2>&1 || true; fi
+  ok "lab3d-site, lab3d-crm, lab3d-slicer$(panel_enabled && echo ", lab3d-panel")"
+  step "Caddy (HTTPS)"
+  write_caddy
+  ok "$CADDY_FILE"
+  write_logrotate
+  write_sudoers
+}
+
+# ---------------------------------------------------------------- статус
+
+since() { systemctl show -p ActiveEnterTimestamp --value "$1" 2>/dev/null | sed 's/^[A-Za-z]* //'; }
+
+show_unit() { # LABEL UNIT [URL]
+  local state; state=$(unit_state "$2")
+  if ! unit_exists "$2"; then printf '  %-14s %s○ не установлен%s\n' "$1" "$C_DIM" "$C_END"; return; fi
+  case $state in
+    active) printf '  %-14s %s● работает%s %sс %s%s %s\n' "$1" "$C_OK" "$C_END" "$C_DIM" "$(since "$2")" "$C_END" "${3:-}" ;;
+    activating|reloading) printf '  %-14s %s● запускается%s\n' "$1" "$C_WARN" "$C_END" ;;
+    *) printf '  %-14s %s○ остановлен%s\n' "$1" "$C_BAD" "$C_END" ;;
+  esac
+}
+
+cmd_status() {
+  local d base; d=$(domain); base=$(base_domain)
+  echo
+  echo "  Лаборатория 3Д - $ROOT"
+  echo
+  show_unit "Сайт" lab3d-site "${d:+https://$d}"
+  show_unit "Заказы (CRM)" lab3d-crm "$(env_get "$LAB_ENV" DEPLOY_DOMAIN | sed 's#^.\+#https://&#')"
+  show_unit "Слайсер" lab3d-slicer "OrcaSlicer $(pinned SlicerOrcaVersion), 127.0.0.1:$(slicer_port)"
+  show_unit "Bambuddy" bambuddy "${base:+https://bambu.$base}"
+  show_unit "HTTPS (Caddy)" caddy
+  show_unit "PostgreSQL" postgresql
+  if panel_enabled; then show_unit "Веб-панель" lab3d-panel "https://panel.$base"; else printf '  %-14s %sвыключена - lab3d panel-on%s\n' "Веб-панель" "$C_DIM" "$C_END"; fi
+  echo
+  printf '  %-14s %s\n' "Версия" "$(git -c safe.directory='*' -C "$ROOT" log -1 --format='%h · %cd · %s' --date=format:'%d.%m.%Y %H:%M' 2>/dev/null || echo '-')"
+  printf '  %-14s загрузки %s · логи %s · бэкапы %s\n' "Диск" \
+    "$(du -sh "$ROOT/uploads" 2>/dev/null | cut -f1)" "$(du -sh "$LOG_DIR" 2>/dev/null | cut -f1)" "$(du -sh "$ROOT/backups" 2>/dev/null | cut -f1 || echo 0)"
+  slicer_installed || printf '  %-14s %sне установлен - lab3d slicer%s\n' "Слайсер" "$C_WARN" "$C_END"
+  echo
+}
+
+# ---------------------------------------------------------------- запуск / остановка
+
+targets_of() { # all|name
+  case ${1:-all} in
+    all) echo "lab3d-site lab3d-crm lab3d-slicer" ;;
+    *) unit_of "$1" ;;
+  esac
+}
+
+cmd_service() { # start|stop|restart [target]
+  local action=$1 target=${2:-all}; need_root "$action" "$target"
+  local units; units=$(targets_of "$target")
+  # shellcheck disable=SC2086
+  systemctl "$action" $units
+  [[ $target == all && $action != stop ]] && systemctl reload caddy 2>/dev/null || true
+  ok "$action: $units"
+}
+
+# ---------------------------------------------------------------- логи
+
+cmd_logs() {
+  local source=${1:-site}
+  case $source in
+    site) exec tail -n 200 -F "$LOG_DIR/next.log" ;;
+    site-errors) exec tail -n 200 -F "$LOG_DIR/next-error.log" ;;
+    crm) exec tail -n 200 -F "$LAB_LOG_DIR/app.log" ;;
+    crm-errors) exec tail -n 200 -F "$LAB_LOG_DIR/app-error.log" ;;
+    slicer) exec tail -n 200 -F "$LOG_DIR/slicer.log" "$LOG_DIR/slicer-error.log" ;;
+    panel) exec tail -n 200 -F "$LOG_DIR/panel.log" "$LOG_DIR/panel-error.log" ;;
+    caddy) exec journalctl -u caddy -n 200 -f ;;
+    bambuddy) exec journalctl -u bambuddy -n 200 -f ;;
+    *) die "Логи: site, site-errors, crm, crm-errors, slicer, panel, caddy, bambuddy" ;;
+  esac
+}
+
+# ---------------------------------------------------------------- сборка и база
+
+# prisma db push без того, кто ответит на вопрос: если все предупреждения - только новые
+# уникальные индексы (данные не удаляются), подтверждаем; иначе - стоп, решает человек.
+db_push() {
+  local out code=0
+  out=$(as_app npx prisma db push </dev/null 2>&1) || code=$?
+  sed 's/^/    /' <<<"$out"
+  [[ $code -eq 0 ]] && return 0
+  grep -q "There might be data loss" <<<"$out" || return 1
+  local warnings
+  warnings=$(sed -n '/There might be data loss/,$p' <<<"$out" | tail -n +2 | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*Error:' || true)
+  if [[ -z $warnings ]] || grep -qv "A unique constraint covering the columns .* will be added" <<<"$warnings"; then
+    warn "Изменение схемы может удалить данные - автоматически не применяется. Проверьте предупреждения и выполните: lab3d db-push"
+    return 1
+  fi
+  ok "Добавляются только уникальные индексы (данные не удаляются) - подтверждаю."
+  as_app npx prisma db push --accept-data-loss 2>&1 | sed 's/^/    /'
+}
+
+build_all() {
+  step "Зависимости сайта"
+  as_app npm install --no-audit --no-fund
+  step "Клиент базы"
+  as_app npx prisma generate
+  step "Схема базы"
+  db_push || return 1
+  step "Сборка сайта"
+  as_app npm run build
+  step "Зависимости «Заказов»"
+  as_user_in "$LAB" npm install --no-audit --no-fund
+}
+
+cmd_db_push() { need_root db-push; as_app npx prisma db push; }
+
+# ---------------------------------------------------------------- обновление
+
+cmd_git_check() {
+  local fetch=${1:-fetch}
+  local runner=(); [[ $EUID -eq 0 ]] && runner=(runuser -u "$APP_USER" --)
+  ( cd "$ROOT" && "${runner[@]}" env HOME="$APP_HOME" node - "$ROOT" "$fetch" <<'JS'
+const { execFileSync } = require("node:child_process");
+const [root, mode] = process.argv.slice(2);
+const git = (...args) => execFileSync("git", ["-c", "core.quotepath=off", "-c", "safe.directory=*", "-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const tryGit = (...a) => { try { return git(...a); } catch { return null; } };
+const info = { gitInstalled: true, isRepo: false, hasCommits: false, branch: "", upstream: "", remote: "", head: "", headDate: "", headMessage: "", behind: 0, ahead: 0, dirty: 0, commits: [], error: "" };
+if (tryGit("rev-parse", "--git-dir") !== null) {
+  info.isRepo = true;
+  info.hasCommits = tryGit("rev-parse", "--verify", "--quiet", "HEAD") !== null;
+  info.remote = tryGit("remote", "get-url", "origin") ?? "";
+  if (info.hasCommits) {
+    info.branch = tryGit("rev-parse", "--abbrev-ref", "HEAD") ?? "";
+    const [h, d, ...m] = (tryGit("log", "-1", "--format=%h|%cd|%s", "--date=format:%d.%m.%Y %H:%M") ?? "").split("|");
+    Object.assign(info, { head: h ?? "", headDate: d ?? "", headMessage: m.join("|") });
+    info.dirty = (tryGit("status", "--porcelain", "-uno") ?? "").split("\n").filter(Boolean).length;
+    if (mode === "fetch" && info.remote) {
+      try { git("fetch", "--quiet"); } catch (e) { info.error = String(e.stderr || e.message).trim(); }
+    }
+    info.upstream = tryGit("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}") ?? "";
+    if (info.upstream) {
+      info.behind = Number(tryGit("rev-list", "--count", "HEAD..@{u}") ?? 0);
+      info.ahead = Number(tryGit("rev-list", "--count", "@{u}..HEAD") ?? 0);
+      info.commits = (tryGit("log", "HEAD..@{u}", "--format=%h  %s", "-n", "30") ?? "").split("\n").filter(Boolean);
+    }
+  }
+}
+console.log(JSON.stringify(info));
+JS
+  )
+}
+
+git_pull() { # force?
+  local force=$1 info behind
+  [[ -d $ROOT/.git ]] || { dim "Папка не подключена к git - код не обновляется."; return 0; }
+  step "Получение обновлений (git)"
+  info=$(cmd_git_check fetch)
+  local error upstream; error=$(node -pe 'JSON.parse(process.argv[1]).error' "$info"); upstream=$(node -pe 'JSON.parse(process.argv[1]).upstream' "$info")
+  behind=$(node -pe 'JSON.parse(process.argv[1]).behind' "$info")
+  [[ -z $error ]] || die "Не удалось связаться с репозиторием: $error"
+  [[ -n $upstream ]] || die "Ветка не привязана к удалённому репозиторию."
+  if [[ $behind == 0 ]]; then ok "Код уже актуален."; return 0; fi
+  ok "Новых коммитов: $behind"
+  node -e 'for (const c of JSON.parse(process.argv[1]).commits) console.log("    " + c)' "$info"
+  if as_user_in "$ROOT" git -c safe.directory='*' pull --ff-only; then ok "Код обновлён."; return 0; fi
+  [[ $force == 1 ]] || die "git pull не удался: локальные изменения мешают. Принудительно: lab3d update --force"
+  warn "Принудительное обновление: локальные изменения отбрасываются."
+  as_user_in "$ROOT" git -c safe.directory='*' reset --hard '@{u}'
+}
+
+# Копия команды у root обновляется только когда update запускает человек, а не веб-панель
+# (её sudo идёт от lab3d - тогда файл из папки проекта не должен попадать к root).
+refresh_cli() {
+  [[ ${SUDO_USER:-} == "$APP_USER" ]] && { dim "Команда lab3d не обновлялась (запуск из веб-панели) - обновите вручную: sudo lab3d update"; return; }
+  [[ -f $INSTALLED_CLI ]] || return 0
+  local tmp; tmp=$(mktemp)
+  sed "s#@LAB3D_ROOT@#$ROOT#" "$ROOT/deploy/linux/lab3d" > "$tmp"
+  if ! cmp -s "$tmp" "$INSTALLED_CLI"; then install -m 755 -o root -g root "$tmp" "$INSTALLED_CLI"; ok "Команда lab3d обновлена."; fi
+  rm -f "$tmp"
+}
+
+cmd_update() {
+  local force=0; [[ ${1:-} == --force ]] && force=1
+  need_root update "$@"
+  git_pull "$force"
+  local site_was=0; systemctl is-active -q lab3d-site && site_was=1
+  step "Останавливаю сайт на время сборки"
+  systemctl stop lab3d-site
+  if ! build_all; then
+    bad "Обновление не завершено."
+    [[ $site_was == 1 ]] && { warn "Запускаю сайт снова, чтобы он не остался выключенным."; systemctl start lab3d-site || true; }
+    exit 1
+  fi
+  if slicer_installed && ! slicer_current; then
+    step "Закреплённая версия слайсера сменилась - переустанавливаю"
+    cmd_slicer_install soft || warn "Слайсер не обновился - сайт работает, цены по договорённости."
+  fi
+  cmd_config
+  refresh_cli
+  step "Запуск"
+  systemctl restart lab3d-site lab3d-crm
+  slicer_installed && systemctl restart lab3d-slicer
+  ok "Готово: $(git -c safe.directory='*' -C "$ROOT" log -1 --format='%h %s')"
+  # Последней и без ожидания: из веб-панели этот процесс живёт внутри её службы.
+  if panel_enabled; then systemctl restart --no-block lab3d-panel; fi
+}
+
+# ---------------------------------------------------------------- слайсер
+
+cmd_slicer_install() {
+  local soft=${1:-}
+  need_root slicer
+  systemctl stop lab3d-slicer 2>/dev/null || true
+  local code=0
+  as_user_in "$ROOT" bash "$ROOT/deploy/linux/install-slicer.sh" || code=$?
+  unit_exists lab3d-slicer && systemctl start lab3d-slicer || true
+  if [[ $code -ne 0 ]]; then [[ $soft == soft ]] && return 1; die "Слайсер не установлен."; fi
+}
+
+cmd_slicer_test() {
+  need_root slicer-test
+  as_app env SLICER_PORT="$(slicer_port)" node "$ROOT/deploy/slicer-test.mjs"
+}
+
+# ---------------------------------------------------------------- бэкап
+
+cmd_backup() {
+  local out=${1:-$ROOT/backups}
+  need_root backup "$@"
+  local site_was=0 crm_was=0
+  systemctl is-active -q lab3d-site && site_was=1
+  systemctl is-active -q lab3d-crm && crm_was=1
+  # Остановка на минуту: базы и файлы попадают в архив согласованными.
+  if (( site_was || crm_was )); then step "Останавливаю сайт и «Заказы» на время копирования"; systemctl stop lab3d-site lab3d-crm; fi
+  local code=0 staging="$ROOT/backups"
+  install -d -o "$APP_USER" -g "$APP_USER" -m 700 "$staging"
+  as_app bash "$ROOT/deploy/linux/backup.sh" "$staging" || code=$?
+  (( site_was )) && systemctl start lab3d-site
+  (( crm_was )) && systemctl start lab3d-crm
+  [[ $code -eq 0 ]] || die "Резервная копия не создана."
+  if [[ $(readlink -f "$out") != $(readlink -f "$staging") ]]; then
+    install -d "$out"
+    local latest; latest=$(ls -t "$staging"/lab3d-backup-*.tar.gz | head -n1)
+    mv "$latest" "$out/" && ok "Перенесено в $out/$(basename "$latest")"
+  fi
+}
+
+# ---------------------------------------------------------------- веб-панель
+
+cmd_panel_password() {
+  need_root panel-password
+  local p1 p2
+  read -rsp "Новый пароль веб-панели (не короче 10 символов): " p1; echo
+  read -rsp "Ещё раз: " p2; echo
+  [[ $p1 == "$p2" ]] || die "Пароли не совпали."
+  (( ${#p1} >= 10 )) || die "Слишком короткий пароль."
+  # Тот же формат, что у Windows (New-PanelPasswordHash): panel.mjs проверяет его так же.
+  local hash
+  hash=$(PANEL_PW="$p1" node -e '
+    const c = require("node:crypto"); const salt = c.randomBytes(16); const it = 210000;
+    const h = c.pbkdf2Sync(process.env.PANEL_PW, salt, it, 32, "sha256");
+    console.log(`pbkdf2-sha256$${it}$${salt.toString("base64")}$${h.toString("base64")}`);')
+  env_set "$ENV_FILE" PANEL_PASSWORD "$hash"
+  [[ -n $(env_get "$ENV_FILE" PANEL_SECRET) ]] || env_set "$ENV_FILE" PANEL_SECRET "$(openssl rand -hex 48)"
+  [[ -n $(env_get "$ENV_FILE" PANEL_PORT) ]] || env_set "$ENV_FILE" PANEL_PORT 3100
+  ok "Пароль сохранён."
+  systemctl is-active -q lab3d-panel && systemctl restart lab3d-panel || true
+}
+
+cmd_panel_on() {
+  need_root panel-on
+  [[ -n $(env_get "$ENV_FILE" PANEL_PASSWORD) ]] || die "Сначала задайте пароль: lab3d panel-password"
+  [[ -n $(domain) ]] || die "Веб-панель открывается на panel.<домен> - сначала нужен домен."
+  env_set "$ENV_FILE" PANEL_ENABLED 1
+  cmd_config
+  systemctl restart lab3d-panel
+  ok "Веб-панель: https://panel.$(base_domain) (DNS-запись A для panel.$(base_domain) -> внешний IP)"
+}
+
+cmd_panel_off() {
+  need_root panel-off
+  env_set "$ENV_FILE" PANEL_ENABLED 0
+  cmd_config
+  ok "Веб-панель выключена."
+}
+
+# Только эти действия доступны веб-панели (через sudo, см. write_sudoers).
+cmd_panel_action() {
+  [[ $EUID -eq 0 ]] || die "Только через sudo."
+  case ${1:-} in
+    site-restart) systemctl restart lab3d-site; slicer_installed && systemctl restart lab3d-slicer; systemctl reload caddy; ok "Сайт перезапущен." ;;
+    site-update) cmd_update ;;
+    crm-start|crm-stop|crm-restart) systemctl "${1#crm-}" lab3d-crm; ok "«Заказы»: ${1#crm-}" ;;
+    bambuddy-start|bambuddy-stop|bambuddy-restart) systemctl "${1#bambuddy-}" bambuddy; ok "Bambuddy: ${1#bambuddy-}" ;;
+    *) die "Неизвестное действие: ${1:-}" ;;
+  esac
+}
+
+# ---------------------------------------------------------------- main
+
+# deploy/linux/install.sh подключает этот файл ради функций - тогда команд не выполняем.
+[[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
+
+cmd=${1:-status}; shift || true
+case $cmd in
+  status) cmd_status ;;
+  start|stop|restart) cmd_service "$cmd" "$@" ;;
+  logs) cmd_logs "$@" ;;
+  update) cmd_update "$@" ;;
+  backup) cmd_backup "$@" ;;
+  slicer) cmd_slicer_install ;;
+  slicer-test) cmd_slicer_test ;;
+  db-push) cmd_db_push ;;
+  config) cmd_config ;;
+  build) need_root build; build_all ;;
+  panel-password) cmd_panel_password ;;
+  panel-on) cmd_panel_on ;;
+  panel-off) cmd_panel_off ;;
+  panel-action) cmd_panel_action "$@" ;;
+  git-check) cmd_git_check "${1:-fetch}" ;;
+  help|-h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "Неизвестная команда: $cmd (lab3d help)" ;;
+esac

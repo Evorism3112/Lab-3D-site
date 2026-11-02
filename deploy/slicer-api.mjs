@@ -10,11 +10,14 @@ http.Server.prototype.listen = function (port, ...rest) {
   // The wrapper logs nothing for a good slice, so every request is written to slicer.log: that is
   // how one sees Bambuddy really sent a slice here. Health checks and progress polls are skipped.
   this.on("request", (req, res) => {
-    if (req.method === "GET" && /^\/(health|slice\/progress)/.test(req.url ?? "")) return;
+    // Express has already rewritten req.url for its mounted routers ("/health" -> "/") by the time
+    // this listener runs; originalUrl keeps what was asked for.
+    const url = req.originalUrl ?? req.url ?? "";
+    if (req.method === "GET" && /^\/(health|slice\/progress)/.test(url)) return;
     const started = Date.now();
     res.on("close", () => {
       const took = ((Date.now() - started) / 1000).toFixed(1);
-      console.log(`${new Date().toISOString()} ${req.method} ${req.url} ${res.statusCode} ${took}s`);
+      console.log(`${new Date().toISOString()} ${req.method} ${url} ${res.statusCode} ${took}s`);
     });
   });
   // Express calls listen(port, callback).

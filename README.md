@@ -131,6 +131,40 @@ Backup). The archive holds keys and customer data — keep it private.
 Other commands: `bambuddy-start | bambuddy-stop | bambuddy-restart`, `db-push` (interactive schema push
 for changes `update` refuses to apply unattended), `git-check`, `cleanup-cache`.
 
+## Running on a Linux server (Ubuntu / Debian)
+
+The same all-in-one setup as on Windows — site, lab (CRM), PostgreSQL, Caddy (HTTPS), Bambuddy,
+OrcaSlicer for prices and the web panel — as systemd services. Scripts live in `deploy/linux/`.
+
+```bash
+sudo git clone <repo> /opt/lab3d && cd /opt/lab3d
+sudo deploy/linux/install.sh --restore lab3d-backup-<date>.tar.gz   # moving from Windows
+sudo deploy/linux/install.sh --domain lab-3d.pro --email admin@…   # or from scratch
+```
+
+`install.sh` installs the packages (Node 24 from NodeSource, PostgreSQL, Caddy, OrcaSlicer's
+libraries), creates the `lab3d` user that runs everything, a fresh database, restores the backup
+(`.env` files from Windows are converted: new `DATABASE_URL`, CRLF, Windows paths dropped), builds
+the site and lab, installs OrcaSlicer (AppImage, extracted — no FUSE or display needed) with the
+`orca-slicer-api` wrapper, Bambuddy (its own native installer), the systemd units and Caddy config,
+and `/usr/local/sbin/lab3d`. Re-running it is safe. Bambuddy's data comes back from its own backup.
+
+| Command | |
+| --- | --- |
+| `lab3d` | status of every service |
+| `sudo lab3d start\|stop\|restart [site\|crm\|slicer\|panel\|bambuddy\|caddy]` | services (`all` by default) |
+| `lab3d logs [site\|site-errors\|crm\|crm-errors\|slicer\|panel\|caddy\|bambuddy]` | live logs |
+| `sudo lab3d update [--force]` | git pull, dependencies, schema, build, restart (like `server.bat update`) |
+| `sudo lab3d backup [dir]` | the same archive as `server.bat backup` |
+| `sudo lab3d slicer` / `slicer-test` | (re)install OrcaSlicer / check slicing end to end |
+| `sudo lab3d panel-password`, `panel-on`, `panel-off` | the web panel on `panel.<domain>` |
+| `sudo lab3d config` | regenerate the systemd units and Caddyfile from the `.env` files |
+
+Logs are files, as on Windows (`deploy/logs/`, `lab/deploy/logs/`, rotated by logrotate), so the
+web panel shows them the same way. The panel runs as `lab3d` and may only run
+`sudo lab3d panel-action <name>` (`/etc/sudoers.d/lab3d-panel`). The installed `lab3d` is a
+root-owned copy, refreshed by `sudo lab3d update` run by a person (not by the panel).
+
 ### Environment variables (`.env`)
 
 | Variable | Purpose |

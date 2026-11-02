@@ -3,8 +3,12 @@
 // commands and writes to the same journal (logs/journal.log) the desktop window shows — whatever
 // is done in one is visible in the other, and the two never run an operation at the same time.
 //
-// Runs on its own (Windows task "Lab3D Panel", see server.ps1 panel-install), so it keeps working
-// while the site restarts. Plain Node, no dependencies. Listens on 127.0.0.1 only; Caddy adds HTTPS.
+// Runs on its own (Windows task "Lab3D Panel", see server.ps1 panel-install; on Linux the systemd
+// service lab3d-panel, see deploy/linux/lab3d), so it keeps working while the site restarts. Plain
+// Node, no dependencies. Listens on 127.0.0.1 only; Caddy adds HTTPS.
+//
+// On Linux the services are systemd units and the actions go through "sudo lab3d panel-action"
+// (the panel runs as the site user; sudoers lets it run just that command).
 //
 //   node deploy/panel.mjs        # PANEL_PASSWORD / PANEL_SECRET / PANEL_PORT come from .env.production
 
@@ -25,6 +29,8 @@ const GUI_LOCK = path.join(DEPLOY, "gui-operation.json"); // written by Lab3D.ex
 const SERVER_PS1 = path.join(DEPLOY, "server.ps1");
 const LAB_ROOT = path.join(ROOT, "lab");
 const LAB_SERVER_PS1 = path.join(LAB_ROOT, "deploy", "server.ps1");
+const LINUX = process.platform !== "win32";
+const LAB3D_CLI = "/usr/local/sbin/lab3d";
 
 const SESSION_HOURS = 12;
 const MAX_FAILED_LOGINS = 5;
@@ -114,7 +120,23 @@ function serviceState(stateFile, envFile) {
   return { state: s.ready ? "running" : "starting", url: s.url || "", startedAt: s.startedAt || null };
 }
 
+// Linux: a systemd unit's state, in the same shape as serviceState.
+function unitState(unit, url = "") {
+  return new Promise((resolve) => {
+    // --timestamp=unix: "@1730563200" - the default "Mon 2026-11-02 18:00:00 MSK" isn't parseable by Date.
+    execFile("systemctl", ["show", unit, "--timestamp=unix", "-p", "LoadState,ActiveState,ActiveEnterTimestamp"], (err, stdout) => {
+      const props = Object.fromEntries(String(stdout).split("\n").filter(Boolean).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
+      if (err || props.LoadState !== "loaded") return resolve({ state: "not-installed" });
+      const map = { active: "running", activating: "starting", reloading: "running", deactivating: "stopping" };
+      const seconds = Number(String(props.ActiveEnterTimestamp || "").replace(/^@/, ""));
+      const startedAt = seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
+      resolve({ state: map[props.ActiveState] || "stopped", url, startedAt });
+    });
+  });
+}
+
 function bambuddyState() {
+  if (LINUX) return unitState("bambuddy");
   return new Promise((resolve) => {
     execFile("sc.exe", ["query", "Bambuddy"], { windowsHide: true }, (err, stdout) => {
       if (err && !stdout) return resolve({ state: "not-installed" });
@@ -135,6 +157,7 @@ function gitHead() {
 }
 
 function currentOperation() {
+  // On Linux there is no desktop window: only the panel's own operations count.
   const web = readJson(WEB_LOCK);
   if (web && alive(web.pid)) return { title: web.title, source: "web" };
   const gui = readJson(GUI_LOCK);
@@ -171,6 +194,14 @@ function journal(text) {
 
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 
+function spawnAction(name) {
+  const action = ACTIONS[name];
+  if (LINUX) return spawn("sudo", ["-n", LAB3D_CLI, "panel-action", name], { cwd: ROOT, env: { ...process.env, TERM: "dumb" } });
+  return spawn("powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", action.script, ...action.args, "-NoElevate"],
+    { cwd: ROOT, windowsHide: true, detached: false });
+}
+
 function runAction(name) {
   const action = ACTIONS[name];
   const busy = currentOperation();
@@ -180,9 +211,7 @@ function runAction(name) {
     throw err;
   }
   journal(`\n► ${action.title} (веб-панель)\n`);
-  const child = spawn("powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", action.script, ...action.args, "-NoElevate"],
-    { cwd: ROOT, windowsHide: true, detached: false });
+  const child = spawnAction(name);
   fs.writeFileSync(WEB_LOCK, JSON.stringify({ pid: child.pid, title: action.title, startedAt: new Date().toISOString() }));
   const out = (chunk) => journal(stripAnsi(chunk.toString("utf8")));
   child.stdout.on("data", out);
@@ -194,8 +223,11 @@ function runAction(name) {
 }
 
 function gitCheck() {
+  const [file, args] = LINUX
+    ? [LAB3D_CLI, ["git-check"]]
+    : ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", SERVER_PS1, "git-check", "-NoElevate"]];
   return new Promise((resolve) => {
-    execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", SERVER_PS1, "git-check", "-NoElevate"],
+    execFile(file, args,
       { cwd: ROOT, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
         const json = String(stdout).split(/\r?\n/).reverse().find((l) => l.trim().startsWith("{"));
         try {
@@ -214,7 +246,10 @@ const LOG_SOURCES = {
   site: ["Сайт", path.join(LOG_DIR, "next.log")],
   "site-errors": ["Ошибки сайта", path.join(LOG_DIR, "next-error.log")],
   caddy: ["HTTPS (Caddy)", path.join(LOG_DIR, "caddy-error.log")],
-  events: ["События сервера", path.join(LOG_DIR, "supervisor.log")],
+  // Windows: the supervisor's own log; Linux has none (systemd restarts) - the slicer's instead.
+  ...(LINUX
+    ? { slicer: ["Слайсер", path.join(LOG_DIR, "slicer.log")] }
+    : { events: ["События сервера", path.join(LOG_DIR, "supervisor.log")] }),
   crm: ["Заказы: сервер", path.join(LAB_ROOT, "deploy", "logs", "app.log")],
   "crm-errors": ["Заказы: ошибки", path.join(LAB_ROOT, "deploy", "logs", "app-error.log")],
 };
@@ -288,7 +323,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, 429, { error: "Слишком много попыток. Подождите 15 минут." });
     }
     if (!readEnv().PANEL_PASSWORD) {
-      return send(res, 503, { error: "Пароль панели не задан — задайте его в Lab3D.exe → Настройки → Веб-панель." });
+      return send(res, 503, {
+        error: LINUX ? "Пароль панели не задан — на сервере: sudo lab3d panel-password" : "Пароль панели не задан — задайте его в Lab3D.exe → Настройки → Веб-панель.",
+      });
     }
     const { password } = await readBody(req);
     if (!checkPassword(password || "")) {
@@ -322,11 +359,17 @@ const server = http.createServer(async (req, res) => {
       } catch {
         // malformed URL — keep the default
       }
+      const site = LINUX
+        ? await unitState("lab3d-site", env.DEPLOY_DOMAIN ? `https://${env.DEPLOY_DOMAIN}` : "")
+        : serviceState(path.join(DEPLOY, "state.json"), ENV_FILE);
+      const crm = !fs.existsSync(LAB_ROOT)
+        ? null
+        : LINUX
+          ? await unitState("lab3d-crm", labEnv.DEPLOY_DOMAIN ? `https://${labEnv.DEPLOY_DOMAIN}` : "")
+          : serviceState(path.join(LAB_ROOT, "deploy", "state.json"), path.join(LAB_ROOT, ".env"));
       return send(res, 200, {
-        site: { ...serviceState(path.join(DEPLOY, "state.json"), ENV_FILE), localPort: Number(env.APP_PORT) || 3000 },
-        crm: fs.existsSync(LAB_SERVER_PS1)
-          ? { ...serviceState(path.join(LAB_ROOT, "deploy", "state.json"), path.join(LAB_ROOT, ".env")), localPort: Number(labEnv.PORT) || 3001 }
-          : { state: "absent" },
+        site: { ...site, localPort: Number(env.APP_PORT) || 3000 },
+        crm: crm ? { ...crm, localPort: Number(labEnv.PORT) || 3001 } : { state: "absent" },
         bambuddy: { ...bambuddy, localPort: bambuddyPort },
         operation: currentOperation(),
         version: head,

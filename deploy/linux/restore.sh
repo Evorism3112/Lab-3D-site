@@ -40,7 +40,7 @@ grep -E '"(createdAt|machine|gitCommit|domain)"' "$work/manifest.json" | sed 's/
 step "Database check"
 url=${DATABASE_URL:-}
 if [[ -z $url ]]; then
-  url=$(grep -E '^DATABASE_URL=' "$work/.env.production" 2>/dev/null | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')
+  url=$({ tr -d '\r' < "$work/.env.production"; } 2>/dev/null | grep -E '^DATABASE_URL=' | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//') || true
   echo "    DATABASE_URL is not set - using the one from the backup's .env.production"
 fi
 [[ -n $url ]] || { echo "No DATABASE_URL" >&2; exit 1; }

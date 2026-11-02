@@ -307,7 +307,7 @@ const dictionaries = {
       markupLabel: "Plastic markup (%)",
       slicerTitle: "Exact price from the slicer",
       slicerHint:
-        "The customer's model is sliced in OrcaSlicer through Bambuddy with these presets, and the price uses the real print time and plastic. Until the slicer is done the customer sees “Calculating…”; if it can't slice the model, the order goes through without a price, to be agreed with the customer. Models are uploaded to the Bambuddy library folder \"Расчёт цены (сайт)\" and deleted right after slicing. Needs the slicer (Lab3D.exe → Printers → Slicer) chosen in Bambuddy → Settings → Workflow → Slicer with “Use slicer API” on and the Bambuddy API key with “Read status” and “Manage library”.",
+        "The customer's model is sliced in OrcaSlicer through Bambuddy with these presets, and the price uses the real print time and plastic. Until the slicer is done the customer sees “Calculating…”; if it can't slice the model, the order goes through without a price, to be agreed with the customer. Models are uploaded to the Bambuddy library folder \"Расчёт цены (сайт)\" and deleted right after slicing. Needs the slicer (Lab3D.exe → Printers → Slicer on Windows, sudo lab3d slicer on Linux) chosen in Bambuddy → Settings → Workflow → Slicer with “Use slicer API” on and the Bambuddy API key with “Read status” and “Manage library”.",
       slicerNotConfigured: "Bambuddy is not set up (BAMBUDDY_API_KEY), so the slicer can't price models: every order goes in with the price to be agreed.",
       slicerLoading: "Loading presets from Bambuddy…",
       slicerLoadError: "Could not load presets from Bambuddy: %d",
@@ -718,7 +718,7 @@ const dictionaries = {
       markupLabel: "Наценка на пластик (%)",
       slicerTitle: "Точная цена через слайсер",
       slicerHint:
-        "Модель клиента нарезается в OrcaSlicer через Bambuddy с этими профилями, и цена считается по реальному времени печати и расходу пластика. Пока слайсер считает, клиент видит «Расчёт слайсером…»; если он не смог нарезать модель, заказ оформляется без цены — её согласуют с клиентом. Модели загружаются в папку библиотеки Bambuddy «Расчёт цены (сайт)» и удаляются сразу после нарезки. Нужен слайсер (Lab3D.exe → Принтеры → Слайсер), выбранный в Bambuddy → Настройки → Рабочий процесс → «Слайсер» с включённым «Использовать API слайсера», и API-ключ Bambuddy с правами «Read status» и «Manage library».",
+        "Модель клиента нарезается в OrcaSlicer через Bambuddy с этими профилями, и цена считается по реальному времени печати и расходу пластика. Пока слайсер считает, клиент видит «Расчёт слайсером…»; если он не смог нарезать модель, заказ оформляется без цены — её согласуют с клиентом. Модели загружаются в папку библиотеки Bambuddy «Расчёт цены (сайт)» и удаляются сразу после нарезки. Нужен слайсер (Lab3D.exe → Принтеры → Слайсер на Windows, sudo lab3d slicer на Linux), выбранный в Bambuddy → Настройки → Рабочий процесс → «Слайсер» с включённым «Использовать API слайсера», и API-ключ Bambuddy с правами «Read status» и «Manage library».",
       slicerNotConfigured: "Bambuddy не подключён (BAMBUDDY_API_KEY), поэтому слайсер не считает цены: все заказы идут с ценой по договорённости.",
       slicerLoading: "Загружаем профили из Bambuddy…",
       slicerLoadError: "Не удалось получить профили из Bambuddy: %d",

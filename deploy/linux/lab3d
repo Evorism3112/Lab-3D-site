@@ -579,8 +579,9 @@ cmd_restore() {
   if (( ! yes )); then
     echo "  Все текущие данные сайта и «Заказов» на этом сервере будут заменены данными из"
     echo "  $archive"
-    read -rp "  Продолжить? Напишите «да»: " answer
-    [[ $answer == да ]] || die "Отменено."
+    read -rp "  Продолжить? Напишите «да» или «yes»: " answer
+    # «lf» - это «да», набранное на английской раскладке.
+    case ${answer,,} in да|yes|y|lf) ;; *) die "Отменено." ;; esac
   fi
 
   local db_url; db_url=$(env_get "$ENV_FILE" DATABASE_URL)

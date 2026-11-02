@@ -6,6 +6,7 @@
 #   lab3d logs [site|site-errors|crm|crm-errors|slicer|panel|caddy|bambuddy]
 #   lab3d update [--force]     # git pull, зависимости, база, сборка, перезапуск
 #   lab3d backup [папка]       # все данные сайта и «Заказов» в один архив
+#   lab3d restore <архив>      # вернуть данные из бэкапа (заменяет текущие)
 #   lab3d slicer               # установить / переустановить OrcaSlicer для цен
 #   lab3d slicer-test          # проверить нарезку целиком (слайсер -> Bambuddy -> кубик)
 #   lab3d db-push              # применить схему базы вручную (с вопросом о рисках)
@@ -118,6 +119,42 @@ slicer_port() { sed -n 's/^\$script:SlicerPort = \([0-9]*\).*/\1/p' "$ROOT/deplo
 slicer_tag() { echo "orca-$(pinned SlicerOrcaVersion)|$(pinned SlicerApiCommit)"; }
 slicer_installed() { [[ -x $SLICER_DIR/orca/AppRun && -f $SLICER_DIR/api/dist/src/index.js ]]; }
 slicer_current() { slicer_installed && [[ -f $SLICER_DIR/version.txt && $(<"$SLICER_DIR/version.txt") == "$(slicer_tag)" ]]; }
+
+# Настройки под Linux поверх .env-файлов - новых или перенесённых с Windows (install.sh, restore).
+apply_env() { # DOMAIN DATABASE_URL
+  local DOMAIN=$1 DATABASE_URL=$2 IP BASE_URL
+  IP=$(hostname -I | awk '{print $1}')
+  BASE_URL=$([[ -n $DOMAIN ]] && echo "https://$DOMAIN" || echo "https://$IP")
+  touch "$ENV_FILE" "$LAB_ENV"
+  # Файлы с Windows - с переводами строк CRLF; systemd и bash их так не поймут.
+  sed -i 's/\r$//' "$ENV_FILE" "$LAB_ENV"
+  env_set "$ENV_FILE" DATABASE_URL "$DATABASE_URL"
+  [[ -n $(env_get "$ENV_FILE" AUTH_SECRET) && $(env_get "$ENV_FILE" AUTH_SECRET) != replace-with* ]] ||
+    env_set "$ENV_FILE" AUTH_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
+  env_set "$ENV_FILE" AUTH_TRUST_HOST true
+  env_set "$ENV_FILE" APP_URL "$BASE_URL"
+  env_set "$ENV_FILE" NEXT_PUBLIC_APP_URL "$BASE_URL"
+  env_set "$ENV_FILE" DEPLOY_DOMAIN "$DOMAIN"
+  env_set "$ENV_FILE" DEPLOY_IP "$IP"
+  [[ -n $(env_get "$ENV_FILE" APP_PORT) ]] || env_set "$ENV_FILE" APP_PORT 3000
+  [[ -n $(env_get "$ENV_FILE" NEXT_PUBLIC_RUB_PER_USD) ]] || env_set "$ENV_FILE" NEXT_PUBLIC_RUB_PER_USD 90
+  [[ -n $(env_get "$ENV_FILE" BAMBUDDY_URL) ]] || env_set "$ENV_FILE" BAMBUDDY_URL http://127.0.0.1:8000
+  grep -q '^BAMBUDDY_API_KEY=' "$ENV_FILE" || env_set "$ENV_FILE" BAMBUDDY_API_KEY ""
+  # Пути программ с Windows здесь не нужны.
+  env_unset "$ENV_FILE" DEPLOY_NODE; env_unset "$ENV_FILE" DEPLOY_CADDY
+  # Веб-панель работала на Windows (пароль перенесён) - включаем и здесь.
+  if [[ -n $(env_get "$ENV_FILE" PANEL_PASSWORD) && -n $DOMAIN && -z $(env_get "$ENV_FILE" PANEL_ENABLED) ]]; then
+    env_set "$ENV_FILE" PANEL_ENABLED 1
+  fi
+  [[ -n $(env_get "$LAB_ENV" PORT) ]] || env_set "$LAB_ENV" PORT 3001
+  [[ -n $(env_get "$LAB_ENV" DEPLOY_DOMAIN) || -z $DOMAIN ]] || env_set "$LAB_ENV" DEPLOY_DOMAIN "crm.${DOMAIN#www.}"
+  [[ -z $DOMAIN ]] || env_set "$LAB_ENV" SITE_URL "https://$DOMAIN"
+  env_unset "$LAB_ENV" DEPLOY_NODE; env_unset "$LAB_ENV" NEW_LAB_3D_ROOT
+  [[ -n $(env_get "$ENV_FILE" LAB_API_URL) ]] || env_set "$ENV_FILE" LAB_API_URL "http://127.0.0.1:$(crm_port)"
+  chown "$APP_USER:$APP_USER" "$ENV_FILE" "$LAB_ENV"; chmod 600 "$ENV_FILE" "$LAB_ENV"
+  local crm; crm=$(env_get "$LAB_ENV" DEPLOY_DOMAIN)
+  ok "сайт: $BASE_URL${crm:+ · «Заказы»: https://$crm}"
+}
 
 # ---------------------------------------------------------------- службы
 
@@ -508,6 +545,64 @@ cmd_backup() {
   fi
 }
 
+# ---------------------------------------------------------------- восстановление
+
+# Бэкап (с Windows или отсюда) поверх уже установленной системы: её данные заменяются.
+cmd_restore() {
+  local archive="" domain_arg="" yes=0
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --domain) domain_arg=$2; shift 2 ;;
+      --yes|-y) yes=1; shift ;;
+      *) archive=$(readlink -f "$1"); shift ;;
+    esac
+  done
+  [[ -n $archive ]] || die "Укажите архив: sudo lab3d restore /путь/lab3d-backup-….tar.gz"
+  need_root restore "$archive" ${domain_arg:+--domain "$domain_arg"} $( ((yes)) && echo --yes)
+  [[ -f $archive ]] || die "Нет архива: $archive"
+  tar -tzf "$archive" manifest.json >/dev/null 2>&1 || die "Это не бэкап Лаборатории 3Д (нет manifest.json)."
+
+  if (( ! yes )); then
+    echo "  Все текущие данные сайта и «Заказов» на этом сервере будут заменены данными из"
+    echo "  $archive"
+    read -rp "  Продолжить? Напишите «да»: " answer
+    [[ $answer == да ]] || die "Отменено."
+  fi
+
+  local db_url; db_url=$(env_get "$ENV_FILE" DATABASE_URL)
+  [[ $db_url == postgresql://* ]] || die "В $ENV_FILE нет DATABASE_URL - сначала установка: deploy/linux/install.sh"
+  local db_name=${db_url##*/}; db_name=${db_name%%\?*}
+
+  step "Останавливаю сайт, «Заказы» и веб-панель"
+  systemctl stop lab3d-site lab3d-crm lab3d-panel 2>/dev/null || true
+
+  step "Пустая база $db_name"
+  runuser -u postgres -- dropdb --if-exists --force "$db_name"
+  runuser -u postgres -- createdb -O "$APP_USER" "$db_name"
+  ok "готово"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 700 "$ROOT/backups"
+  local copy; copy="$ROOT/backups/$(basename "$archive")"
+  [[ $archive == "$copy" ]] || install -m 600 -o "$APP_USER" -g "$APP_USER" "$archive" "$copy"
+  as_user_in "$ROOT" env DATABASE_URL="$db_url" bash "$ROOT/deploy/linux/restore.sh" "$copy" "$ROOT" --force
+
+  step "Настройки (.env.production, lab/.env)"
+  # Домен: указанный, иначе из бэкапа.
+  local domain=${domain_arg:-$(env_get "$ENV_FILE" DEPLOY_DOMAIN)}
+  apply_env "$domain" "$db_url"
+
+  # Сборка заново: адрес сайта (NEXT_PUBLIC_*) вшивается в неё.
+  build_all || die "Сборка не удалась - исправьте ошибку выше и повторите: sudo lab3d update"
+  cmd_config
+  step "Запуск"
+  systemctl restart lab3d-site lab3d-crm
+  slicer_installed && systemctl restart lab3d-slicer
+  if panel_enabled; then systemctl restart lab3d-panel; fi
+  cmd_status
+  echo "  Восстановлено. Входы в админку и «Заказы» - те же, что были на Windows."
+  echo "  Bambuddy восстанавливается своим бэкапом: http://$(hostname -I | awk '{print $1}'):$(bambuddy_port) -> Настройки -> Резервное копирование."
+}
+
 # ---------------------------------------------------------------- веб-панель
 
 cmd_panel_password() {
@@ -571,6 +666,7 @@ case $cmd in
   logs) cmd_logs "$@" ;;
   update) cmd_update "$@" ;;
   backup) cmd_backup "$@" ;;
+  restore) cmd_restore "$@" ;;
   slicer) cmd_slicer_install ;;
   slicer-test) cmd_slicer_test ;;
   db-push) cmd_db_push ;;
@@ -581,6 +677,6 @@ case $cmd in
   panel-off) cmd_panel_off ;;
   panel-action) cmd_panel_action "$@" ;;
   git-check) cmd_git_check "${1:-fetch}" ;;
-  help|-h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|-h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "Неизвестная команда: $cmd (lab3d help)" ;;
 esac

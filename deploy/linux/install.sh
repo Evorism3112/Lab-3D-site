@@ -118,36 +118,8 @@ step "Настройки (.env.production, lab/.env)"
 DOMAIN=${DOMAIN_ARG:-$(env_get "$ENV_FILE" DEPLOY_DOMAIN)}
 if [[ -z $DOMAIN && -t 0 ]]; then read -rp "    Домен сайта (пусто - без домена, по IP): " DOMAIN; fi
 DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%/}
+apply_env "$DOMAIN" "$DATABASE_URL"
 IP=$(hostname -I | awk '{print $1}')
-BASE_URL=$([[ -n $DOMAIN ]] && echo "https://$DOMAIN" || echo "https://$IP")
-
-touch "$ENV_FILE" "$LAB_ENV"
-# Файлы с Windows - с переводами строк CRLF; systemd и bash их так не поймут.
-sed -i 's/\r$//' "$ENV_FILE" "$LAB_ENV"
-env_set "$ENV_FILE" DATABASE_URL "$DATABASE_URL"
-[[ -n $(env_get "$ENV_FILE" AUTH_SECRET) && $(env_get "$ENV_FILE" AUTH_SECRET) != replace-with* ]] ||
-  env_set "$ENV_FILE" AUTH_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
-env_set "$ENV_FILE" AUTH_TRUST_HOST true
-env_set "$ENV_FILE" APP_URL "$BASE_URL"
-env_set "$ENV_FILE" NEXT_PUBLIC_APP_URL "$BASE_URL"
-env_set "$ENV_FILE" DEPLOY_DOMAIN "$DOMAIN"
-env_set "$ENV_FILE" DEPLOY_IP "$IP"
-[[ -n $(env_get "$ENV_FILE" APP_PORT) ]] || env_set "$ENV_FILE" APP_PORT 3000
-[[ -n $(env_get "$ENV_FILE" NEXT_PUBLIC_RUB_PER_USD) ]] || env_set "$ENV_FILE" NEXT_PUBLIC_RUB_PER_USD 90
-[[ -n $(env_get "$ENV_FILE" BAMBUDDY_URL) ]] || env_set "$ENV_FILE" BAMBUDDY_URL http://127.0.0.1:8000
-grep -q '^BAMBUDDY_API_KEY=' "$ENV_FILE" || env_set "$ENV_FILE" BAMBUDDY_API_KEY ""
-# Пути программ с Windows здесь не нужны.
-env_unset "$ENV_FILE" DEPLOY_NODE; env_unset "$ENV_FILE" DEPLOY_CADDY
-# Веб-панель работала на Windows (пароль перенесён) - включаем и здесь.
-[[ -n $(env_get "$ENV_FILE" PANEL_PASSWORD) && -n $DOMAIN && -z $(env_get "$ENV_FILE" PANEL_ENABLED) ]] && env_set "$ENV_FILE" PANEL_ENABLED 1
-
-[[ -n $(env_get "$LAB_ENV" PORT) ]] || env_set "$LAB_ENV" PORT 3001
-[[ -n $(env_get "$LAB_ENV" DEPLOY_DOMAIN) || -z $DOMAIN ]] || env_set "$LAB_ENV" DEPLOY_DOMAIN "crm.${DOMAIN#www.}"
-[[ -z $DOMAIN ]] || env_set "$LAB_ENV" SITE_URL "https://$DOMAIN"
-env_unset "$LAB_ENV" DEPLOY_NODE; env_unset "$LAB_ENV" NEW_LAB_3D_ROOT
-[[ -n $(env_get "$ENV_FILE" LAB_API_URL) ]] || env_set "$ENV_FILE" LAB_API_URL "http://127.0.0.1:$(crm_port)"
-chown "$APP_USER:$APP_USER" "$ENV_FILE" "$LAB_ENV"; chmod 600 "$ENV_FILE" "$LAB_ENV"
-ok "сайт: $BASE_URL$([[ -n $(env_get "$LAB_ENV" DEPLOY_DOMAIN) ]] && echo " · «Заказы»: https://$(env_get "$LAB_ENV" DEPLOY_DOMAIN)")"
 
 # ---------------------------------------------------------------- сборка
 

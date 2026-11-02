@@ -142,10 +142,16 @@ ok(`режет через OrcaSlicer (${sidecarUrl || `http://localhost:${slicer
 step("3. Профили");
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
 const chosen = {};
+// Same default as lib/settings.ts: Cool Plate (the process presets' own) refuses PETG, ABS etc.
+let bedType = "Textured PEI Plate";
 try {
   await db.connect();
-  const rows = (await db.query(`select key, value from "Setting" where key in ('slicer.printerPreset', 'slicer.processPreset')`)).rows;
+  const rows = (await db.query(`select key, value from "Setting" where key in ('slicer.printerPreset', 'slicer.processPreset', 'slicer.bedType')`)).rows;
   for (const row of rows) {
+    if (row.key === "slicer.bedType") {
+      bedType = row.value;
+      continue;
+    }
     try {
       chosen[row.key] = JSON.parse(row.value);
     } catch {
@@ -178,7 +184,7 @@ const suffix = suffixOf(processPreset.name);
 const plas = all("filament").filter((p) => (p.filament_type ?? "").toUpperCase() === "PLA" && (!suffix || p.name.endsWith(suffix)));
 const filament = plas.find((p) => /generic/i.test(p.name)) ?? plas[0] ?? all("filament")[0];
 if (!filament) await fail("Bambuddy не вернул ни одного профиля пластика.");
-console.log(`    принтер: ${printer.name}\n    процесс: ${processPreset.name}\n    пластик: ${filament.name}`);
+console.log(`    принтер: ${printer.name}\n    процесс: ${processPreset.name}\n    пластик: ${filament.name}\n    пластина: ${bedType || "как в профиле процесса"}`);
 
 // 4. A real slice through Bambuddy, cleaned up afterwards like the site does.
 step("4. Нарезка тестового кубика 20 мм");
@@ -214,6 +220,7 @@ try {
         filament_preset: ref(filament),
         process_overrides: { sparse_infill_density: "15%" },
         auto_arrange: true,
+        ...(bedType ? { bed_type: bedType } : {}),
       }),
     },
     60_000,

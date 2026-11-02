@@ -18,7 +18,7 @@ import { prisma } from "@/lib/db";
 import { toBinarySTL, type SupportedFormat } from "@/lib/geometry";
 import { getSettings } from "@/lib/settings";
 import { slicedBy, testCubeStl } from "@/lib/slicerOutput";
-import { pickFilamentPreset, type NamedPresetRef } from "@/lib/slicerPresets";
+import { parseBedType, pickFilamentPreset, type BedType, type NamedPresetRef } from "@/lib/slicerPresets";
 import { storage } from "@/lib/storage";
 
 // Exact print time and plastic from the slicer: the model goes to the Bambuddy library, its
@@ -45,6 +45,8 @@ export type SliceConfig = {
   process: NamedPresetRef;
   /** Filament preset per material id chosen by the admin. */
   filaments: Record<string, NamedPresetRef>;
+  /** "" = the process preset's own plate. */
+  bedType: BedType | "";
 };
 
 function parsePreset(raw: string): NamedPresetRef | null {
@@ -58,7 +60,7 @@ function parsePreset(raw: string): NamedPresetRef | null {
 
 /** The admin's slicer presets, or null when slicer quotes are off. */
 export async function getSliceConfig(): Promise<SliceConfig | null> {
-  const values = await getSettings(["slicer.printerPreset", "slicer.processPreset", "slicer.filamentPresets"]);
+  const values = await getSettings(["slicer.printerPreset", "slicer.processPreset", "slicer.filamentPresets", "slicer.bedType"]);
   const printer = parsePreset(values["slicer.printerPreset"]);
   const process = parsePreset(values["slicer.processPreset"]);
   if (!printer || !process) return null;
@@ -71,7 +73,7 @@ export async function getSliceConfig(): Promise<SliceConfig | null> {
   } catch {
     // A broken value means automatic picks for every material.
   }
-  return { printer, process, filaments };
+  return { printer, process, filaments, bedType: parseBedType(values["slicer.bedType"]) };
 }
 
 /** One slice as the admin sees it (admin → Prices → slicer → log). */
@@ -165,7 +167,8 @@ type Job = {
 /** Identity of the slicer settings, so changing a preset doesn't reuse old results. */
 function sliceKey(options: SliceOptions, scalePercent: number): string {
   const parts = [options.printer, options.process, options.filament].map((p) => `${p.source}:${p.id}`);
-  const raw = [...parts, options.infillPercent, scalePercent].join("|");
+  // The plate only joins the key when set, so results from before the setting existed stay valid.
+  const raw = [...parts, options.infillPercent, scalePercent, ...(options.bedType ? [options.bedType] : [])].join("|");
   return createHash("sha256").update(raw).digest("hex").slice(0, 32);
 }
 
@@ -204,7 +207,7 @@ export async function getSliceResult(
   if (!filament) return { status: "unavailable" };
 
   const ref = ({ source, id }: PresetRef): PresetRef => ({ source, id });
-  const options: SliceOptions = { printer: ref(config.printer), process: ref(config.process), filament, infillPercent };
+  const options: SliceOptions = { printer: ref(config.printer), process: ref(config.process), filament, infillPercent, bedType: config.bedType };
   const key = sliceKey(options, scalePercent);
   const id = `${file.id}|${key}`;
 
@@ -327,7 +330,7 @@ export async function startTestSlice(): Promise<string | null> {
       const filament = await filamentFor(config, material);
       if (!filament) continue;
       const ref = ({ source, id }: PresetRef): PresetRef => ({ source, id });
-      options = { printer: ref(config.printer), process: ref(config.process), filament, infillPercent: TEST_INFILL_PERCENT };
+      options = { printer: ref(config.printer), process: ref(config.process), filament, infillPercent: TEST_INFILL_PERCENT, bedType: config.bedType };
       materialName = material.name;
       break;
     }

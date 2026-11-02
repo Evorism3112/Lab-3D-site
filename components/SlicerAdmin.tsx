@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { SlicerPreset, SlicerPresets } from "@/lib/bambuddy";
 import type { SliceLogEntry } from "@/lib/slicing";
 import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
-import { fitsPrinter, pickFilamentPreset, type NamedPresetRef } from "@/lib/slicerPresets";
+import { BED_TYPES, fitsPrinter, pickFilamentPreset, type BedType, type NamedPresetRef } from "@/lib/slicerPresets";
 
 type Material = { id: string; name: string; slug: string };
 
@@ -27,6 +27,7 @@ export function SlicerAdmin({
   printer: savedPrinter,
   process: savedProcess,
   filaments: savedFilaments,
+  bedType: savedBedType,
 }: {
   dict: Dictionary;
   /** Bambuddy is set up (BAMBUDDY_API_KEY). */
@@ -35,6 +36,8 @@ export function SlicerAdmin({
   printer: NamedPresetRef | null;
   process: NamedPresetRef | null;
   filaments: Record<string, NamedPresetRef>;
+  /** "" = the process preset's own plate. */
+  bedType: BedType | "";
 }) {
   const t = dict.admin;
   const router = useRouter();
@@ -44,6 +47,7 @@ export function SlicerAdmin({
   const [printer, setPrinter] = useState(savedPrinter);
   const [process, setProcess] = useState(savedProcess);
   const [filaments, setFilaments] = useState(savedFilaments);
+  const [bedType, setBedType] = useState(savedBedType);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
@@ -69,7 +73,7 @@ export function SlicerAdmin({
     const res = await fetch("/api/admin/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slicer: { printer, process, filaments } }),
+      body: JSON.stringify({ slicer: { printer, process, filaments, bedType } }),
     });
     setBusy(false);
     setMessage(res.ok ? { text: t.pricingSaved, error: false } : { text: t.slicerSaveError, error: true });
@@ -127,6 +131,25 @@ export function SlicerAdmin({
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {presetSelect(t.slicerPrinter, presets.printer, printer, setPrinter, t.slicerOff)}
             {presetSelect(t.slicerProcess, processes, process, setProcess, t.slicerOff)}
+            <label className="flex min-w-0 flex-col gap-1">
+              <span className="text-xs text-muted">{t.slicerBedType}</span>
+              <select
+                value={bedType}
+                onChange={(e) => {
+                  setBedType(e.target.value as BedType | "");
+                  setMessage(null);
+                }}
+                className="w-full px-3 py-1.5 text-sm"
+              >
+                {BED_TYPES.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+                <option value="">{t.slicerBedTypeFromProcess}</option>
+              </select>
+              <span className="text-xs text-muted">{t.slicerBedTypeHint}</span>
+            </label>
           </div>
 
           {printer && process && (

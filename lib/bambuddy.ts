@@ -227,6 +227,8 @@ export type SliceOptions = {
   filament: PresetRef;
   /** Slicer infill, %. */
   infillPercent: number;
+  /** Build plate (curr_bed_type), e.g. "Textured PEI Plate"; "" = the process preset's own. */
+  bedType: string;
 };
 
 /** Queues a slice of a library file; the result is polled with getSliceJob. */
@@ -241,6 +243,7 @@ export async function startSlice(fileId: number, options: SliceOptions): Promise
       process_overrides: { sparse_infill_density: `${options.infillPercent}%` },
       // A customer's STL can sit anywhere in its coordinates: put it on the plate.
       auto_arrange: true,
+      ...(options.bedType ? { bed_type: options.bedType } : {}),
     }),
     timeoutMs: 120_000,
   });

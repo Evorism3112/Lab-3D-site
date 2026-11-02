@@ -29,3 +29,24 @@ export function pickFilamentPreset(
   const candidates = presets.filter((p) => (p.filament_type ?? "").toUpperCase() === type && fitsPrinter(p, printer, process));
   return candidates.find((p) => /generic/i.test(p.name)) ?? candidates[0] ?? null;
 }
+
+/**
+ * Build plates the slicer knows (curr_bed_type). The process preset usually says "Cool Plate",
+ * which has no bed temperature for PETG, ABS and the like, so the CLI refuses: "Cool Plate does
+ * not support filament 1". Textured PEI has temperatures for almost every plastic.
+ */
+export const BED_TYPES = [
+  "Textured PEI Plate",
+  "Smooth PEI Plate",
+  "High Temp Plate",
+  "Engineering Plate",
+  "Cool Plate",
+  "Cool Plate (SuperTack)",
+] as const;
+export type BedType = (typeof BED_TYPES)[number];
+export const DEFAULT_BED_TYPE: BedType = "Textured PEI Plate";
+
+/** The stored plate setting; "" = whatever the process preset says. */
+export function parseBedType(raw: string): BedType | "" {
+  return (BED_TYPES as readonly string[]).includes(raw) ? (raw as BedType) : "";
+}

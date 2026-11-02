@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { MAX_PHONES, normalizeVkUrl, parsePhone } from "@/lib/contacts";
 import { setSetting } from "@/lib/settings";
+import { BED_TYPES } from "@/lib/slicerPresets";
 
 const PresetSchema = z.object({
   source: z.enum(["orca_cloud", "cloud", "local", "standard"]),
@@ -37,6 +38,8 @@ const SettingsSchema = z
         printer: PresetSchema.nullable(),
         process: PresetSchema.nullable(),
         filaments: z.record(z.string(), PresetSchema),
+        // "" = the process preset's own plate.
+        bedType: z.union([z.enum(BED_TYPES), z.literal("")]).optional(),
       })
       .optional(),
   })
@@ -85,6 +88,7 @@ export async function PATCH(request: NextRequest) {
     await setSetting("slicer.printerPreset", printer ? JSON.stringify(printer) : "");
     await setSetting("slicer.processPreset", process ? JSON.stringify(process) : "");
     await setSetting("slicer.filamentPresets", JSON.stringify(filaments));
+    if (parsed.data.slicer.bedType !== undefined) await setSetting("slicer.bedType", parsed.data.slicer.bedType);
   }
   return NextResponse.json({ ok: true });
 }

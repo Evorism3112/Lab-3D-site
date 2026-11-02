@@ -29,6 +29,8 @@ const DEFAULTS = {
   "slicer.printerPreset": "",
   "slicer.processPreset": "",
   "slicer.filamentPresets": "{}",
+  /** Build plate for slicing (lib/slicerPresets.ts BED_TYPES); "" = the process preset's own. */
+  "slicer.bedType": "Textured PEI Plate",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

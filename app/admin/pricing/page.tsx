@@ -7,6 +7,7 @@ import { isBambuddyConfigured } from "@/lib/bambuddy";
 import { ensureColorsFresh, getColorAvailability, isColorAvailable } from "@/lib/colorSync";
 import { prisma } from "@/lib/db";
 import { getInfillOptions, getSettings, getShopRates } from "@/lib/settings";
+import { parseBedType } from "@/lib/slicerPresets";
 import { localizeCatalogText } from "@/lib/i18n/catalog";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
@@ -28,7 +29,7 @@ export default async function AdminPricingPage() {
       },
     }),
     getColorAvailability(),
-    getSettings(["bambuddy.lastSyncAt", "bambuddy.lastSyncError"]),
+    getSettings(["bambuddy.lastSyncAt", "bambuddy.lastSyncError", "slicer.bedType"]),
     getInfillOptions(),
     getShopRates(),
     getSliceConfig(),
@@ -58,6 +59,7 @@ export default async function AdminPricingPage() {
           printer={slicer?.printer ?? null}
           process={slicer?.process ?? null}
           filaments={slicer?.filaments ?? {}}
+          bedType={parseBedType(settings["slicer.bedType"])}
         />
       </div>
       <div className="mt-5">

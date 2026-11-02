@@ -7,6 +7,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const listen = http.Server.prototype.listen;
 http.Server.prototype.listen = function (port, ...rest) {
+  // The wrapper logs nothing for a good slice, so every request is written to slicer.log: that is
+  // how one sees Bambuddy really sent a slice here. Health checks and progress polls are skipped.
+  this.on("request", (req, res) => {
+    if (req.method === "GET" && /^\/(health|slice\/progress)/.test(req.url ?? "")) return;
+    const started = Date.now();
+    res.on("close", () => {
+      const took = ((Date.now() - started) / 1000).toFixed(1);
+      console.log(`${new Date().toISOString()} ${req.method} ${req.url} ${res.statusCode} ${took}s`);
+    });
+  });
   // Express calls listen(port, callback).
   return listen.call(this, port, "127.0.0.1", ...rest.filter((arg) => typeof arg === "function"));
 };

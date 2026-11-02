@@ -200,6 +200,20 @@ export async function uploadLibraryFile(content: Buffer, filename: string, folde
   return res.id;
 }
 
+/** The bytes of a library file (e.g. a sliced 3MF). */
+export async function downloadLibraryFile(fileId: number, timeoutMs = 60_000): Promise<Buffer> {
+  if (!BAMBUDDY_API_KEY) throw new BambuddyError("BAMBUDDY_API_KEY is not configured", 503);
+  const res = await fetch(`${BAMBUDDY_URL}/api/v1/library/files/${fileId}/download`, {
+    headers: { "X-API-Key": BAMBUDDY_API_KEY },
+    signal: AbortSignal.timeout(timeoutMs),
+    cache: "no-store",
+  }).catch(() => {
+    throw new BambuddyError(`Bambuddy is unreachable at ${BAMBUDDY_URL}`, 502);
+  });
+  if (!res.ok) throw new BambuddyError(res.statusText, res.status);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 /** Moves a library file to Bambuddy's trash, which it empties by itself. */
 export async function deleteLibraryFile(fileId: number): Promise<void> {
   await callBambuddy(`/library/files/${fileId}`, { method: "DELETE" });

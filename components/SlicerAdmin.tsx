@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import type { SlicerPreset, SlicerPresets } from "@/lib/bambuddy";
+import type { SliceLogEntry } from "@/lib/slicing";
 import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import { fitsPrinter, pickFilamentPreset, type NamedPresetRef } from "@/lib/slicerPresets";
 
@@ -173,6 +174,126 @@ export function SlicerAdmin({
         </div>
       )}
       {message && <p className={`mt-2 text-sm ${message.error ? "text-danger" : "text-accent"}`}>{message.text}</p>}
+
+      {configured && <SliceLog dict={dict} />}
+    </div>
+  );
+}
+
+/** "1:05" for 65 minutes. */
+const hoursMinutes = (seconds: number) => {
+  const minutes = Math.round(seconds / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+};
+const secondsBetween = (from: number, to: number) => Math.max(0, Math.round((to - from) / 1000));
+
+// What the slicer did lately (lib/slicing.ts keeps the log), with a test cube button, so the admin
+// can see that slicing works and which slicer answered.
+function SliceLog({ dict }: { dict: Dictionary }) {
+  const t = dict.admin;
+  const [log, setLog] = useState<SliceLogEntry[] | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  const refresh = useCallback(async () => {
+    const data = await fetch("/api/admin/slicer/log", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (data?.log) setLog(data.log);
+    setNow(Date.now());
+  }, []);
+
+  // Often while something is queued or slicing, rarely otherwise (a customer may start a slice).
+  const active = log?.some((e) => e.status === "queued" || e.status === "slicing") ?? false;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+    const timer = setInterval(() => void refresh(), active ? 2_000 : 15_000);
+    return () => clearInterval(timer);
+  }, [active, refresh]);
+
+  const startTest = async () => {
+    setStarting(true);
+    setTestError(null);
+    const res = await fetch("/api/admin/slicer/test", { method: "POST" }).catch(() => null);
+    const data = await res?.json().catch(() => null);
+    if (!res?.ok) {
+      const code = data?.error ?? "network";
+      const known: Record<string, string> = {
+        not_configured: t.slicerTestNotConfigured,
+        no_presets: t.slicerTestNoPresets,
+        no_material: t.slicerTestNoMaterial,
+      };
+      setTestError(known[code] ?? formatTemplate(t.slicerTestError, code));
+    }
+    setStarting(false);
+    await refresh();
+  };
+
+  const statusText = (e: SliceLogEntry) => {
+    switch (e.status) {
+      case "queued":
+        return t.slicerLogQueued;
+      case "slicing":
+        return formatTemplate(t.slicerLogSlicing, secondsBetween(e.startedAt ?? now, now));
+      case "ok":
+        return t.slicerLogOk;
+      case "failed":
+        return t.slicerLogFailed;
+      case "dropped":
+        return t.slicerLogDropped;
+    }
+  };
+  const statusColor: Record<SliceLogEntry["status"], string> = {
+    queued: "text-muted",
+    slicing: "text-text",
+    ok: "text-accent",
+    failed: "text-danger",
+    dropped: "text-muted",
+  };
+
+  return (
+    <div className="mt-6 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="font-semibold text-text">{t.slicerLogTitle}</h3>
+        <button type="button" onClick={startTest} disabled={starting} className="btn btn-outline px-4 py-1.5 text-sm">
+          {starting ? t.slicerTestStarting : t.slicerTest}
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-muted">{t.slicerLogHint}</p>
+      {testError && <p className="mt-2 text-sm text-danger">{testError}</p>}
+
+      {log && log.length === 0 && <p className="mt-3 text-sm text-muted">{t.slicerLogEmpty}</p>}
+      {log && log.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-2">
+          {log.map((e) => (
+            <li key={e.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-xs text-muted">{new Date(e.queuedAt).toLocaleTimeString()}</span>
+                <span className="text-xs text-muted">{e.kind === "test" ? t.slicerLogKindTest : t.slicerLogKindQuote}</span>
+                <span className="min-w-0 break-all text-text">{e.model}</span>
+                <span className="text-muted">{e.material}</span>
+                <span className={`ml-auto font-medium ${statusColor[e.status]}`}>{statusText(e)}</span>
+              </div>
+              {e.status === "ok" && e.printSeconds !== null && e.grams !== null && (
+                <div className="mt-1 text-xs text-muted">
+                  {formatTemplate(
+                    formatTemplate(formatTemplate(t.slicerLogResult, hoursMinutes(e.printSeconds)), e.grams.toFixed(1)),
+                    secondsBetween(e.startedAt ?? e.queuedAt, e.finishedAt ?? now),
+                  )}
+                </div>
+              )}
+              {e.status === "ok" && (
+                <div className={`mt-1 text-xs ${e.slicer ? "text-text" : "text-muted"}`}>
+                  {e.slicer ? formatTemplate(t.slicerLogBy, e.slicer) : t.slicerLogByUnknown}
+                </div>
+              )}
+              {e.status === "failed" && e.error && <div className="mt-1 break-words text-xs text-danger">{e.error}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

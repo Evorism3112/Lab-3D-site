@@ -40,6 +40,8 @@ the frontend and can be used by other systems too.
   admin's presets; the real print time and grams replace the estimate. Slicing takes seconds to
   minutes, so the configurator shows the estimate (marked `≈`) and polls until the slice is ready.
   Results are cached per model + settings in `SliceEstimate`.
+  `/admin/pricing` → slicer has a slice log (latest quotes and test cubes, with the slicer named in each
+  sliced file) and a “Test slice” button that slices a 20 mm cube the same way.
 
 ### Payment
 

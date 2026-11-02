@@ -26,7 +26,11 @@ async function save(result) {
 async function fail(text) {
   console.log(`  × ${text}`);
   await save({ ok: false, error: text });
-  process.exit(1);
+  // Not process.exit(): on Windows it can abort Node with "Assertion failed ... src\win\async.c"
+  // while fetch still holds keep-alive sockets. Instead the script stops here and Node exits
+  // with code 1 once those sockets close (an unsettled top-level await is fine with exitCode set).
+  process.exitCode = 1;
+  await new Promise(() => {});
 }
 
 async function call(pathname, init = {}, timeoutMs = 15_000) {

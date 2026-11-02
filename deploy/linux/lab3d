@@ -21,7 +21,10 @@ set -euo pipefail
 
 ROOT="@LAB3D_ROOT@"
 # Запуск прямо из репозитория (до установки): проект - на две папки выше.
-[[ $ROOT == "@LAB3D_ROOT@" ]] && ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)
+# Метка в проверке записана шаблоном, а не полностью: установка заменяет sed-ом каждое вхождение
+# полной метки, и проверка с ней стала бы всегда истинной (тогда ROOT был бы /usr).
+[[ $ROOT == @*@ ]] && ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)
+[[ -f $ROOT/package.json && -d $ROOT/deploy/linux ]] || { echo "lab3d: не найден проект в $ROOT" >&2; exit 1; }
 
 APP_USER=lab3d
 APP_HOME=/var/lib/lab3d

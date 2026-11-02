@@ -301,7 +301,7 @@ function Invoke-Update {
     if (-not $failed) { Write-Step "Схема базы"; if (-not (Invoke-DbPush)) { $failed = "prisma db push не удался." } }
     if (-not $failed) { Write-Step "Сборка сайта"; & npm run build; if ($LASTEXITCODE -ne 0) { $failed = "Сборка не удалась." } }
     # Закреплённая версия слайсера сменилась - переставляем; его сбой сайт не останавливает.
-    # Обёртка, а не exe: при смене слайсера (OrcaSlicer -> Bambu Studio) старого exe по новому пути нет.
+    # Обёртка, а не exe: при смене слайсера (Bambu Studio <-> OrcaSlicer) старого exe по новому пути нет.
     if (-not $failed -and (Test-Path $script:SlicerApiEntry) -and -not (Test-SlicerCurrent)) { Invoke-SlicerInstall -Soft }
     if ($failed) {
         Write-Bad $failed

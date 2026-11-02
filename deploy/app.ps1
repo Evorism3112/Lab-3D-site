@@ -787,10 +787,10 @@ $pPrinters.Controls.Add($bbBottom, 0, 4)
 Add-Page "printers" $pPrinters
 
 # ---------------------------------------------------------------- страница: слайсер
-# Bambu Studio + обёртка для Bambuddy (install-slicer.ps1), через которые сайт считает точную цену.
+# OrcaSlicer + обёртка для Bambuddy (install-slicer.ps1), через которые сайт считает точную цену.
 # Работает в составе сервера сайта (start.ps1); проверка - slicer-test.mjs.
 $pSlicer = New-Table @(80, 184, 120, "*")
-$pSlicer.Controls.Add((New-Heading "Слайсер" "Bambu Studio для точной цены на сайте - через Bambuddy, без Docker"), 0, 0)
+$pSlicer.Controls.Add((New-Heading "Слайсер" "OrcaSlicer для точной цены на сайте - через Bambuddy, без Docker"), 0, 0)
 
 $cardSlHero = New-Card $ColCard 18
 $cardSlHero.Dock = "Fill"
@@ -1633,7 +1633,7 @@ function Update-SlicerStatus([bool]$Probe = $false) {
     elseif (-not $installed) {
         $lblSlState.Text = "Не установлен"; $lblSlState.ForeColor = $ColMuted
         $dotSl.DotColor = $ColMuted; $dotSl.Pulse = $false
-        $lblSlSub.Text = "«Установить» скачает Bambu Studio (~470 МБ) и обёртку для Bambuddy в deploy\slicer. Без него цены на сайте примерные."
+        $lblSlSub.Text = "«Установить» скачает OrcaSlicer (~170 МБ) и обёртку для Bambuddy в deploy\slicer. Без него цены на сайте примерные."
     }
     elseif (-not $state) {
         $lblSlState.Text = "Остановлен"; $lblSlState.ForeColor = $ColRed
@@ -1657,7 +1657,7 @@ function Update-SlicerStatus([bool]$Probe = $false) {
     }
 
     $script:SlFieldValues["Адрес"].Text = "127.0.0.1:$($script:SlicerPort)"
-    $script:SlFieldValues["Версия"].Text = $(if ($installed) { "Bambu Studio $($script:SlicerBambuVersion)" } else { "-" })
+    $script:SlFieldValues["Версия"].Text = $(if ($installed) { "OrcaSlicer $($script:SlicerOrcaVersion)" } else { "-" })
 
     # Настройки Bambuddy читаем только по запросу (при открытии вкладки и после операций) - это сеть.
     if ($Probe) {
@@ -1667,12 +1667,11 @@ function Update-SlicerStatus([bool]$Probe = $false) {
         else {
             try {
                 $bbSettings = Invoke-BambuddyApi (Get-BambuddyBase $config) "/api/v1/settings/" $key
-                if ($bbSettings.preferred_slicer -and $bbSettings.preferred_slicer -ne "bambu_studio") { $bb.Text = "выбран OrcaSlicer"; $bb.ForeColor = $ColYellow }
-                elseif (-not $bbSettings.bambu_studio_api_url) { $bb.Text = "адрес пуст (идёт на :3001)"; $bb.ForeColor = $ColYellow }
-                elseif ($bbSettings.bambu_studio_api_url -notmatch ":$($script:SlicerPort)/?$") { $bb.Text = "адрес $($bbSettings.bambu_studio_api_url)"; $bb.ForeColor = $ColYellow }
-                elseif (-not $bbSettings.use_slicer_api) { $bb.Text = "Bambu Studio, API выкл."; $bb.ForeColor = $ColInk }
-                else { $bb.Text = "Bambu Studio"; $bb.ForeColor = $ColAccent }
-                $script:Tips.SetToolTip($bb, "Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер». Адрес: " + $(if ($bbSettings.bambu_studio_api_url) { $bbSettings.bambu_studio_api_url } else { "не задан (по умолчанию localhost:3001 - там CRM)" }))
+                if ($bbSettings.preferred_slicer -ne "orcaslicer") { $bb.Text = "выбран Bambu Studio"; $bb.ForeColor = $ColYellow }
+                elseif ($bbSettings.orcaslicer_api_url -and $bbSettings.orcaslicer_api_url -notmatch ":$($script:SlicerPort)/?$") { $bb.Text = "адрес $($bbSettings.orcaslicer_api_url)"; $bb.ForeColor = $ColYellow }
+                elseif (-not $bbSettings.use_slicer_api) { $bb.Text = "OrcaSlicer, API выкл."; $bb.ForeColor = $ColInk }
+                else { $bb.Text = "OrcaSlicer"; $bb.ForeColor = $ColAccent }
+                $script:Tips.SetToolTip($bb, "Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер». Адрес: " + $(if ($bbSettings.orcaslicer_api_url) { $bbSettings.orcaslicer_api_url } else { "по умолчанию (localhost:$($script:SlicerPort))" }))
             }
             catch { $bb.Text = "Bambuddy недоступен"; $bb.ForeColor = $ColRed }
         }
@@ -1851,7 +1850,7 @@ $btnBbSite.Add_Click({ Add-Steps @((New-BambuddyStep "Подключение п�
 $btnSlTest.Add_Click({ Add-Steps @((New-SlicerStep "Проверка нарезки" "slicer-test")) { Update-SlicerStatus $true } })
 $btnSlRestart.Add_Click({ Add-Steps @((New-SlicerStep "Перезапуск слайсера" "slicer-restart")) { Update-SlicerStatus $true } })
 $btnSlInstall.Add_Click({
-    $what = "Установить слайсер для точной цены на сайте?`n`nСкачается портативный Bambu Studio (~470 МБ) и обёртка для Bambuddy в deploy\slicer, без Docker. Сайт продолжит работать, слайсер подхватится сам."
+    $what = "Установить слайсер для точной цены на сайте?`n`nСкачается портативный OrcaSlicer (~170 МБ) и обёртка для Bambuddy в deploy\slicer, без Docker. Сайт продолжит работать, слайсер подхватится сам."
     if (Test-SlicerInstalled) { $what = "Переустановить слайсер? Он будет недоступен несколько минут, сайт продолжит работать с примерными ценами." }
     if ([Windows.Forms.MessageBox]::Show($what, "Слайсер", "YesNo", "Question") -ne "Yes") { return }
     Add-Steps @((New-SlicerStep "Установка слайсера" "slicer")) { Update-SlicerStatus $true }

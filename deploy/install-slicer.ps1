@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Ставит (или переставляет) слайсер для точной цены на сайте: портативный Bambu Studio и
+  Ставит (или переставляет) слайсер для точной цены на сайте: портативный OrcaSlicer и
   HTTP-обёртку, через которую его вызывает Bambuddy, - в deploy\slicer, без Docker.
 
 .EXAMPLE
@@ -8,8 +8,8 @@
 
 .NOTES
   Версии закреплены в lib.ps1. Работающий сервер подхватывает слайсер сам (start.ps1),
-  перезапускать сайт не нужно. В конце скрипт проверяет, что Bambu Studio режет из командной
-  строки; адрес слайсера (127.0.0.1:3003) в Bambuddy нужно вписать вручную (ключам API это запрещено).
+  перезапускать сайт не нужно. В конце скрипт проверяет, что OrcaSlicer режет из командной
+  строки; выбрать OrcaSlicer в настройках Bambuddy нужно вручную (ключам API это запрещено).
 #>
 
 . (Join-Path $PSScriptRoot "lib.ps1")
@@ -42,20 +42,18 @@ try {
     Remove-Item $download -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $download | Out-Null
 
-    $version = $script:SlicerBambuVersion
-    Write-Step "Bambu Studio $version (портативный, ~470 МБ)"
-    $zip = Join-Path $download "bambu.zip"
-    Save-Download "https://github.com/bambulab/BambuStudio/releases/download/v$version/Bambu_Studio_win-v$version-$($script:SlicerBambuBuild).zip" $zip
-    $bambuDir = Split-Path $script:SlicerExe
-    Remove-Item $bambuDir -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $bambuDir | Out-Null
-    & $tar -xf $zip -C $bambuDir
-    if ($LASTEXITCODE -ne 0) { throw "Не удалось распаковать Bambu Studio." }
-    if (-not (Test-Path $script:SlicerExe)) { throw "В архиве Bambu Studio нет bambu-studio.exe." }
-    # Отладочные символы нужны только разработчикам Bambu Lab, а занимают сотни мегабайт.
-    Get-ChildItem -Path $bambuDir -Filter "*.pdb" | Remove-Item -Force -ErrorAction SilentlyContinue
-    # Прежний слайсер (OrcaSlicer) больше не нужен.
-    Remove-Item (Join-Path $script:SlicerDir "orca") -Recurse -Force -ErrorAction SilentlyContinue
+    $version = $script:SlicerOrcaVersion
+    Write-Step "OrcaSlicer $version (портативный, ~170 МБ)"
+    $zip = Join-Path $download "orca.zip"
+    Save-Download "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v$version/OrcaSlicer_Windows_V${version}_x64_portable.zip" $zip
+    $orcaDir = Split-Path $script:SlicerExe
+    Remove-Item $orcaDir -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $orcaDir | Out-Null
+    & $tar -xf $zip -C $orcaDir
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось распаковать OrcaSlicer." }
+    if (-not (Test-Path $script:SlicerExe)) { throw "В архиве OrcaSlicer нет orca-slicer.exe." }
+    # Прежний слайсер (Bambu Studio) больше не нужен.
+    Remove-Item (Join-Path $script:SlicerDir "bambu") -Recurse -Force -ErrorAction SilentlyContinue
     Write-Ok $script:SlicerExe
 
     Write-Step "Обёртка для Bambuddy (orca-slicer-api)"
@@ -82,7 +80,7 @@ try {
     Write-Ok $script:SlicerApiDir
 
     # Главный риск без Docker: режет ли Windows-версия из командной строки. Проверяем на кубике.
-    Write-Step "Проверка: Bambu Studio режет модель из командной строки"
+    Write-Step "Проверка: OrcaSlicer режет модель из командной строки"
     $test = Join-Path $download "test"
     New-Item -ItemType Directory -Force -Path $test | Out-Null
     $cube = Join-Path $test "cube.stl"
@@ -114,8 +112,8 @@ finally {
     Remove-Item $download -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Bambuddy по умолчанию ищет Bambu Studio на 3001 (у нас там CRM), а менять его настройки ключам API
-# запрещено - адрес вписывается вручную.
+# Bambuddy по умолчанию ищет OrcaSlicer именно на 127.0.0.1:3003, но режет через Bambu Studio,
+# а менять его настройки ключам API запрещено - выбрать OrcaSlicer нужно один раз вручную.
 $needsKeyFlag = -not $config["BAMBUDDY_API_KEY"]
 if (Get-ServerState) {
     Write-Step "Запуск слайсера"
@@ -130,7 +128,7 @@ if (Get-ServerState) {
 else { Write-Ok "Слайсер запустится вместе с сервером." }
 Write-Host ""
 Write-Host "  Готово. Осталось:" -ForegroundColor Green
-Write-Host "    1. Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер»: слайсер Bambu Studio, включить «Использовать API слайсера», адрес http://127.0.0.1:$($script:SlicerPort)"
+Write-Host "    1. Bambuddy -> Настройки -> Рабочий процесс -> «Слайсер»: слайсер OrcaSlicer, включить «Использовать API слайсера», адрес пустой или http://127.0.0.1:$($script:SlicerPort)"
 if ($needsKeyFlag) { Write-Host "    2. Создать ключ API в Bambuddy (Read status, Control printer, Manage library) и вписать его на вкладке «Принтеры»" }
 else { Write-Host "    2. У ключа API в Bambuddy должно быть включено «Manage library»" }
 Write-Host "    3. Админка сайта: Цены -> «Точная цена через слайсер» - выбрать принтер и процесс (после смены слайсера - заново)"

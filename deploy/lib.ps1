@@ -269,20 +269,17 @@ $Domain {
 }
 
 # ---------------------------------------------------------------------------
-# Слайсер для точной цены на сайте (lib/slicing.ts): портативный Bambu Studio и HTTP-обёртка
-# maziggy/orca-slicer-api (ей всё равно, какой слайсер запускать), через которую его вызывает Bambuddy. Ставится в deploy\slicer
+# Слайсер для точной цены на сайте (lib/slicing.ts): портативный OrcaSlicer и HTTP-обёртка
+# maziggy/orca-slicer-api, через которую его вызывает Bambuddy. Ставится в deploy\slicer
 # (server.bat slicer), запускается и перезапускается вместе с сайтом (start.ps1). Версии
 # закреплены: когда их меняют здесь, server.bat update переустанавливает слайсер сам.
 # ---------------------------------------------------------------------------
 $script:SlicerDir = Join-Path $PSScriptRoot "slicer"
-$script:SlicerBambuVersion = "02.08.02.61"
-# Метка сборки из имени архива релиза - по версии её не вывести.
-$script:SlicerBambuBuild = "20260820225108"
+$script:SlicerOrcaVersion = "2.4.2"
 $script:SlicerApiCommit = "4c05506e40a0057db33234837db164143cbf3ad3"   # ветка bambuddy/profile-resolver
-# Bambuddy по умолчанию ищет Bambu Studio на 3001, но там CRM - берём 3003 (порт его OrcaSlicer),
-# а адрес в Bambuddy вписываем вручную.
+# Порт, на котором Bambuddy по умолчанию ищет OrcaSlicer (3001, порт Bambu Studio, занят CRM).
 $script:SlicerPort = 3003
-$script:SlicerExe = Join-Path $script:SlicerDir "bambu\bambu-studio.exe"
+$script:SlicerExe = Join-Path $script:SlicerDir "orca\orca-slicer.exe"
 $script:SlicerApiDir = Join-Path $script:SlicerDir "api"
 $script:SlicerApiEntry = Join-Path $script:SlicerApiDir "dist\src\index.js"
 $script:SlicerDataDir = Join-Path $script:SlicerDir "data"
@@ -290,7 +287,7 @@ $script:SlicerVersionFile = Join-Path $script:SlicerDir "version.txt"
 # Пока он есть, идёт установка: супервизор не запускает слайсер, чтобы не держать заменяемые файлы.
 $script:SlicerInstallFlag = Join-Path $script:SlicerDir "installing.flag"
 
-function Get-SlicerVersionTag { return "bambu-$($script:SlicerBambuVersion)|$($script:SlicerApiCommit)" }
+function Get-SlicerVersionTag { return "orca-$($script:SlicerOrcaVersion)|$($script:SlicerApiCommit)" }
 
 function Test-SlicerInstalled { return (Test-Path $script:SlicerExe) -and (Test-Path $script:SlicerApiEntry) }
 

@@ -1,19 +1,52 @@
 # Лаборатория 3Д — Order Platform
 
-Instant-quote 3D printing order platform (Formlabs "Form Now" clone), styled and branded to
-match [lab-3d.pro](https://lab-3d.pro): upload an STL/OBJ file, get an automatic price based on
-geometry and material, configure options, pay, and track the order through production. Next.js 16
-(App Router) + PostgreSQL/Prisma, with a JSON API meant to be consumed by other systems (not just
-this frontend). Bilingual UI (EN/RU) via a cookie-based locale switcher.
+Instant-quote 3D printing order site for [lab-3d.pro](https://lab-3d.pro): the customer uploads an
+STL/OBJ file, picks material, color, finish, scale and infill, sees the price right away and places
+the order. Orders are handed to **lab** — the in-house CRM in `lab/` — where they are produced and
+shipped. Bilingual UI (RU/EN) via a cookie-based locale switcher. The JSON API under `app/api` powers
+the frontend and can be used by other systems too.
 
 ## Stack
 
-- Next.js 16 (App Router, TypeScript, Tailwind v4)
-- PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
+- Next.js 16 (App Router, TypeScript, Tailwind v4) — see `AGENTS.md`: this Next.js version has
+  breaking changes, check `node_modules/next/dist/docs/` before writing code
+- PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter, config in `prisma7.config.ts`)
 - Auth.js (NextAuth v5, credentials provider) for the admin panel
-- Stripe Checkout for payment
 - `@react-three/fiber` + `three` for the in-browser 3D preview
 - Custom STL/OBJ parsers (`lib/geometry`) for volume/bounding-box calculation — no native deps
+- Optional: [Bambuddy](https://github.com/maziggy/bambuddy) + OrcaSlicer for exact slicer-based
+  prices and the printer/filament catalog; DaData for Russian address suggestions
+- Stripe Checkout is wired in but **not used right now** (see *Payment* below)
+
+## How an order flows
+
+1. `/order/upload` — the file is uploaded (`POST /api/files`), parsed, its volume and size stored.
+   `/order/sample` ("try it on an example") skips the upload and opens step 2 with a bundled sample model.
+2. `/order/configure/[fileId]` — material / color / finish / quantity / scale / infill; the price comes
+   from `POST /api/quote`.
+3. `/order/checkout` — contacts and delivery (address suggestions, delivery price from lab:
+   `POST /api/delivery/quote`), then `POST /api/orders`.
+4. The order is saved and pushed to lab right away (`lib/labClient.ts`); the customer lands on
+   `/order/thank-you`. Order tracking and production happen in lab, not on this site.
+
+`/order/request` is a separate form for "model it for me" requests (description + photos).
+
+### Pricing
+
+- **Estimate** (`lib/pricing/engine.ts`, pure function): print time from model volume and the
+  printer's speed × hourly rate, plus plastic by weight (volume × infill × density × spool price,
+  with markup), finish multiplier, setup fee and a minimum price. Rates are set in `/admin/pricing`.
+- **Exact** (`lib/slicing.ts`): when Bambuddy is configured, the model is sliced by OrcaSlicer with the
+  admin's presets; the real print time and grams replace the estimate. Slicing takes seconds to
+  minutes, so the configurator shows the estimate (marked `≈`) and polls until the slice is ready.
+  Results are cached per model + settings in `SliceEstimate`.
+
+### Payment
+
+Payment is currently **disabled**: checkout creates the order and sends it to lab, payment is
+arranged there. The Stripe code (`/api/checkout/session`, `/api/webhooks/stripe`, `lib/stripe.ts`)
+is kept, but prices are in rubles, which Stripe does not offer to most Russian accounts — a Russian
+payment provider is needed before turning online payment on.
 
 ## Getting started
 
@@ -30,7 +63,13 @@ npx prisma db seed
 npm run dev
 ```
 
-Open http://localhost:3000. Seeded dev admin login (for `/admin`): `admin` / `admin`.
+Open http://localhost:3000. Seeded dev admin login (for `/admin`): `admin` / `admin` (override with
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` when seeding; in production the seed refuses `admin` or a password
+shorter than 8 characters, and leaves an existing admin alone if no password is given). The seed writes the material catalog only into an
+empty database; `SEED_RESET=1` rewrites it.
+
+To run lab locally next to the site, see `lab/README.md` (it needs its own port, e.g. `PORT=3001`),
+then set `LAB_API_URL=http://127.0.0.1:3001`.
 
 ## Running on a Windows server (static IP, HTTPS, domain)
 
@@ -67,7 +106,18 @@ Everything the window does is also available as commands (and there is a console
 - **Domain:** enter it in Setup and create a DNS `A` record to the server's public IP. Ports 80 and 443 must be reachable from the internet (forward them on the router if the PC is behind one). Without a domain the site opens on `https://<IP>` with a self-signed certificate (the browser warns).
 - **Port 80/443 busy?** IIS or another web server holds them; stop it first (Start tells you what is using the port).
 - **Data to back up:** the PostgreSQL database and the `uploads/` folder.
-- **Stripe:** fill `STRIPE_*` in `.env.production` and restart. Payments are created in rubles, which Stripe does not offer to most Russian accounts — plan a Russian payment provider.
+- **Payment:** disabled for now (see *Payment* above).
+
+**lab (CRM)** is set up from the same Setup flow: it offers to configure lab too, then writes
+`LAB_API_URL` (localhost, lab's port) and `CRM_URL` (lab's domain, used for the «CRM» link in the
+admin panel) into the site's env file.
+
+**Slicer (exact prices):** `server.bat slicer` installs OrcaSlicer + the slicing sidecar for Bambuddy,
+`server.bat slicer-test` checks the whole chain on a test cube, `server.bat slicer-restart` restarts it
+without touching the site. Without it the site keeps working with estimated prices.
+
+Other commands: `bambuddy-start | bambuddy-stop | bambuddy-restart`, `db-push` (interactive schema push
+for changes `update` refuses to apply unattended), `git-check`, `cleanup-cache`.
 
 ### Environment variables (`.env`)
 
@@ -75,27 +125,38 @@ Everything the window does is also available as commands (and there is a console
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string (set for you by `prisma dev`) |
 | `AUTH_SECRET` | Auth.js session secret — replace the placeholder before deploying |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | From the [Stripe test dashboard](https://dashboard.stripe.com/test/apikeys); checkout returns a 503 until these are set |
-| `NEXT_PUBLIC_APP_URL` | Used to build Stripe redirect URLs |
-
-To test the full payment flow, forward Stripe webhooks locally with the Stripe CLI:
-
-```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
-```
+| `APP_URL` / `NEXT_PUBLIC_APP_URL` | Public site address; used for absolute links (e.g. model download links sent to lab) |
+| `LAB_API_URL` | lab's address, e.g. `http://127.0.0.1:3001`; without it orders are saved but not sent to lab |
+| `LAB_API_KEY` | Optional bearer token for the site → lab channel |
+| `CRM_URL` | Link to lab from the admin panel; defaults to `crm.<site domain>` |
+| `BAMBUDDY_URL` | Bambuddy API, default `http://127.0.0.1:8000` |
+| `BAMBUDDY_API_KEY` | Enables exact slicer prices and color sync; without it prices are volume-based estimates |
+| `BAMBUDDY_PUBLIC_URL` | Public address of the Bambuddy UI for the "open Bambuddy" link |
+| `DADATA_API_KEY` | Russian address suggestions (free up to 10k requests/day); without it Photon (OpenStreetMap) is used |
+| `NEXT_PUBLIC_RUB_PER_USD` | Exchange rate for showing USD on the English UI, default `90` |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe (currently unused, see *Payment*) |
 
 ## Project layout
 
-- `app/order/upload`, `app/order/configure/[fileId]`, `app/order/checkout`, `app/order/[orderId]/status` — customer flow
-- `app/admin/orders` — order queue + status transitions (admin-only)
-- `app/api/*` — JSON API (materials catalog, quoting, orders, files, Stripe) — the same endpoints power the frontend and are meant for external integration
+- `app/` — pages: home, `materials`, `works` (showcase), `faq`, `contacts`, `login`, and the order flow
+  in `app/order/*` (`upload`, `configure/[fileId]`, `checkout`, `thank-you`, `request`, `sample`)
+- `app/admin/*` — admin panel: `materials` (materials, colors, images, Bambuddy color sync),
+  `pricing` (rates, infill levels, slicer presets), `printers`, `showcase`, `reviews`, `contacts`
+- `app/api/*` — JSON API: files, quote, orders, materials/colors, showcase, reviews, model requests,
+  address suggestions, delivery quotes, admin endpoints, Stripe
+- `components/` — React components (client parts of pages, admin editors, 3D viewer)
 - `lib/geometry` — STL/OBJ parsing and volume/bounding-box calculation
-- `lib/pricing/engine.ts` — pure pricing function shared by the quote endpoint and order creation
-- `lib/storage` — storage adapter (local disk in dev; swap the implementation for S3 in production)
-- `fixtures/` — a known-volume 10mm test cube (STL + OBJ, expected volume 1 cm³) for manually verifying the geometry pipeline
+- `lib/pricing` — pricing engine and defaults; `lib/slicing.ts`, `lib/bambuddy.ts` — slicer prices
+- `lib/labClient.ts` — sending orders to lab and getting delivery quotes from it
+- `lib/i18n` — RU/EN translations and locale handling
+- `lib/storage` — storage adapter (local `uploads/` folder; can be swapped for S3)
+- `prisma/` — schema, migrations, seed
+- `deploy/` — Windows server app and scripts (`server.bat` is the entry point)
+- `lab/` — the CRM: order board, serial numbers, labels, CDEK/Ozon delivery, warehouse, accounting.
+  A separate Node.js app with its own `package.json` and SQLite database — see `lab/README.md`
+- `fixtures/` — a known-volume 10 mm test cube (expected volume 1 cm³) for checking the geometry pipeline
 
 ## Scope notes
 
-MVP supports **STL and OBJ** only. 3MF/STEP (which the real Form Now also accepts) are not
-implemented — `lib/geometry` is structured with one parser per format behind a common interface
-so adding them later doesn't require touching pricing, upload, or viewer code.
+Only **STL and OBJ** uploads are supported. `lib/geometry` has one parser per format behind a common
+interface, so adding 3MF/STEP later doesn't require touching pricing, upload or viewer code.

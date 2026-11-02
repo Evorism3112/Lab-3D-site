@@ -72,10 +72,9 @@ const health = await fetch(`http://127.0.0.1:${slicerPort}/health`, { signal: Ab
   .then((r) => r.json())
   .catch(() => null);
 if (!health) await fail("Не отвечает. Запущен ли сервер? Подробности - в логе слайсера.");
-// The wrapper names its check "orcaslicer" whatever binary it runs.
-if (!health.checks?.orcaslicer?.available) await fail(`Bambu Studio не запускается: ${health.checks?.orcaslicer?.error ?? "нет подробностей"}`);
+if (!health.checks?.orcaslicer?.available) await fail(`OrcaSlicer не запускается: ${health.checks?.orcaslicer?.error ?? "нет подробностей"}`);
 if (!health.checks?.dataPath?.accessible) await fail(`Нет доступа к папке данных слайсера: ${health.checks?.dataPath?.error ?? ""}`);
-ok("отвечает, Bambu Studio найден");
+ok("отвечает, OrcaSlicer найден");
 
 // 2. Bambuddy: the key and which slicer it sends slices to.
 step("2. Bambuddy");
@@ -86,16 +85,16 @@ try {
 } catch (err) {
   await fail(`${err.message}. У ключа должно быть включено «Read status».`);
 }
-if (settings.preferred_slicer && settings.preferred_slicer !== "bambu_studio") {
-  await fail("В Bambuddy выбран не Bambu Studio: Настройки -> Рабочий процесс -> «Слайсер» -> Предпочитаемый слайсер: Bambu Studio.");
+// Bambuddy's default is Bambu Studio (on :3001, where the CRM runs), so OrcaSlicer must be chosen.
+if (settings.preferred_slicer !== "orcaslicer") {
+  await fail("В Bambuddy выбран не OrcaSlicer: Настройки -> Рабочий процесс -> «Слайсер» -> Предпочитаемый слайсер: OrcaSlicer.");
 }
-const sidecarUrl = (settings.bambu_studio_api_url || "").replace(/\/$/, "");
-// Bambuddy's default for Bambu Studio is :3001, which the CRM uses, so the address must be set.
-if (!sidecarUrl) await fail(`В Bambuddy не задан адрес слайсера (по умолчанию он ищет :3001, там CRM): впишите http://127.0.0.1:${slicerPort}.`);
-if (!/^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(sidecarUrl)) warn(`адрес слайсера в Bambuddy: ${sidecarUrl}`);
-else if (!sidecarUrl.endsWith(`:${slicerPort}`)) await fail(`В Bambuddy адрес слайсера ${sidecarUrl}, а нужен http://127.0.0.1:${slicerPort}.`);
+// An empty address means Bambuddy's default for OrcaSlicer, localhost:3003.
+const sidecarUrl = (settings.orcaslicer_api_url || "").replace(/\/$/, "");
+if (sidecarUrl && !/^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(sidecarUrl)) warn(`адрес слайсера в Bambuddy: ${sidecarUrl}`);
+else if (sidecarUrl && !sidecarUrl.endsWith(`:${slicerPort}`)) await fail(`В Bambuddy адрес слайсера ${sidecarUrl}, а нужен http://127.0.0.1:${slicerPort}.`);
 if (!settings.use_slicer_api) warn("«Использовать API слайсера» выключено: сайту это не мешает, но в самом Bambuddy кнопки «Нарезать» не будет.");
-ok(`режет через Bambu Studio (${sidecarUrl})`);
+ok(`режет через OrcaSlicer (${sidecarUrl || `http://localhost:${slicerPort}`})`);
 
 // 3. Presets: the ones chosen in the site admin, otherwise a common Bambu Lab set.
 step("3. Профили");

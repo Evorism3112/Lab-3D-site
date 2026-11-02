@@ -1141,7 +1141,7 @@ function Update-PanelStatus {
 }
 
 # ---------------------------------------------------------------- страница: очистка
-$pCleanup = New-Table @(80, 168, 228, "*")
+$pCleanup = New-Table @(80, 168, 228, 168, "*")
 $pCleanup.Controls.Add((New-Heading "Очистка" "Удаление файлов, которые больше не нужны"), 0, 0)
 
 $cardCache = New-Card $ColCard 16
@@ -1179,6 +1179,22 @@ $lblScan = New-Label "" 10 $ColInk
 $lblScan.Location = New-Object Drawing.Point(26, 148)
 $cardUploads.Controls.AddRange(@($t2, $d2, $dl, $numDays, $btnScan, $btnPurge, $lblScan))
 $pCleanup.Controls.Add($cardUploads, 0, 2)
+
+# Все данные сайта и «Заказов» в один архив (backup.ps1) - для переезда на новый сервер.
+$script:BackupDir = Join-Path $script:Root "backups"
+$cardBackup = New-Card $ColCard 16
+$cardBackup.Dock = "Fill"
+$cardBackup.Margin = New-Object Windows.Forms.Padding(0, 0, 0, 16)
+$t3 = New-Label "Резервная копия для переезда" 12 $ColInk $true
+$t3.Location = New-Object Drawing.Point(26, 20)
+$d3 = New-Label "База и файлы сайта и «Заказов» в один архив. Сайт на минуту остановится. Bambuddy копируется отдельно, в его настройках." 10 $ColMuted
+$d3.Location = New-Object Drawing.Point(26, 54)
+$btnBackup = New-Button "Создать копию" "primary" 200 (G 0xE896)
+$btnBackup.Location = New-Object Drawing.Point(26, 96)
+$btnBackupFolder = New-Button "Открыть папку" "secondary" 190 (G 0xE838)
+$btnBackupFolder.Location = New-Object Drawing.Point(244, 96)
+$cardBackup.Controls.AddRange(@($t3, $d3, $btnBackup, $btnBackupFolder))
+$pCleanup.Controls.Add($cardBackup, 0, 3)
 Add-Page "cleanup" $pCleanup
 
 
@@ -1952,6 +1968,17 @@ $btnUninstall.Add_Click({
     if ($modules -eq "Yes") { $arguments += " -RemoveModules" }
     Add-Steps @((New-ServerStep "Удаление установки" $arguments))
     Show-Page "overview"
+})
+
+$btnBackup.Add_Click({
+    $what = "Создать резервную копию?`n`nСайт и «Заказы» остановятся примерно на минуту и запустятся сами. Архив появится в папке backups проекта.`n`nВ нём пароли и данные клиентов - храните его бережно."
+    if ([Windows.Forms.MessageBox]::Show($what, "Резервная копия", "YesNo", "Question") -ne "Yes") { return }
+    Add-Steps @((New-ServerStep "Резервная копия" "backup"))
+    Show-Page "overview"
+})
+$btnBackupFolder.Add_Click({
+    New-Item -ItemType Directory -Force -Path $script:BackupDir | Out-Null
+    Start-Process explorer.exe $script:BackupDir
 })
 
 $btnCache.Add_Click({

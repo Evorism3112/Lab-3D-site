@@ -73,8 +73,6 @@ export default async function AdminPricingPage() {
             id: m.id,
             name: m.name,
             ...resolvePricing(m, rates),
-            setupFeeCents: m.setupFeeCents,
-            minPriceCents: m.minPriceCents,
             leadTimeDays: m.leadTimeDays,
             active: m.active,
             colors: m.colors.map((c) => ({
@@ -86,6 +84,7 @@ export default async function AdminPricingPage() {
               source: c.source,
               stockGrams: c.stockGrams,
               spoolPriceCents: c.spoolPriceCents,
+              bambuddyCostPerKgCents: c.bambuddyCostPerKgCents,
               available: isColorAvailable(c, availability),
             })),
             finishes: m.finishes.map((f) => ({

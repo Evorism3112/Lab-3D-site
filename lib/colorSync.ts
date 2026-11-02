@@ -58,7 +58,19 @@ export async function syncColorsFromBambuddy(): Promise<ColorSyncResult> {
       .map((m) => ({ id: m.id, token: materialToken(m.name) }))
       .sort((a, b) => b.token.length - a.token.length);
 
-    type Group = { materialId: string; variant: string; name: string; nameRu: string | null; hex: string; externalKey: string; grams: number; topGrams: number };
+    type Group = {
+      materialId: string;
+      variant: string;
+      name: string;
+      nameRu: string | null;
+      hex: string;
+      externalKey: string;
+      grams: number;
+      topGrams: number;
+      /** cost_per_kg of the fullest spool that has one, kopecks: the one that will be printed from. */
+      costPerKgCents: number | null;
+      costGrams: number;
+    };
     const groups = new Map<string, Group>();
     const skipped = new Set<string>();
     for (const spool of spools) {
@@ -69,17 +81,22 @@ export async function syncColorsFromBambuddy(): Promise<ColorSyncResult> {
       }
       const color = spoolColor(spool);
       const grams = Math.max(0, Math.round(spool.label_weight - spool.weight_used));
+      const cost = typeof spool.cost_per_kg === "number" && spool.cost_per_kg > 0 ? Math.round(spool.cost_per_kg * 100) : null;
       const externalKey = `${match.variant}|${color.name}`;
       const key = `${match.materialId}|${externalKey}`;
       const group = groups.get(key);
       if (!group) {
-        groups.set(key, { ...match, ...color, externalKey, grams, topGrams: grams });
+        groups.set(key, { ...match, ...color, externalKey, grams, topGrams: grams, costPerKgCents: cost, costGrams: cost === null ? -1 : grams });
       } else {
         group.grams += grams;
         // The fullest spool decides the shade shown on the site.
         if (grams > group.topGrams) {
           group.topGrams = grams;
           group.hex = color.hex;
+        }
+        if (cost !== null && grams > group.costGrams) {
+          group.costPerKgCents = cost;
+          group.costGrams = grams;
         }
       }
     }
@@ -98,7 +115,12 @@ export async function syncColorsFromBambuddy(): Promise<ColorSyncResult> {
       if (row) {
         await prisma.color.update({
           where: { id: row.id },
-          data: { source: "bambuddy", stockGrams: g.grams, ...(row.externalKey ? {} : { externalKey: g.externalKey }) },
+          data: {
+            source: "bambuddy",
+            stockGrams: g.grams,
+            bambuddyCostPerKgCents: g.costPerKgCents,
+            ...(row.externalKey ? {} : { externalKey: g.externalKey }),
+          },
         });
         seen.push(row.id);
       } else {
@@ -106,7 +128,7 @@ export async function syncColorsFromBambuddy(): Promise<ColorSyncResult> {
         // have just created this very color — then it is simply updated.
         const saved = await prisma.color.upsert({
           where: { materialId_variant_name: { materialId: g.materialId, variant: g.variant, name: g.name } },
-          update: { source: "bambuddy", stockGrams: g.grams },
+          update: { source: "bambuddy", stockGrams: g.grams, bambuddyCostPerKgCents: g.costPerKgCents },
           create: {
             materialId: g.materialId,
             variant: g.variant,
@@ -116,6 +138,7 @@ export async function syncColorsFromBambuddy(): Promise<ColorSyncResult> {
             source: "bambuddy",
             externalKey: g.externalKey,
             stockGrams: g.grams,
+            bambuddyCostPerKgCents: g.costPerKgCents,
           },
         });
         seen.push(saved.id);

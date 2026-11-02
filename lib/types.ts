@@ -26,8 +26,6 @@ export type MaterialDTO = {
   description: string | null;
   /** Printer time, kopecks per hour. */
   hourlyRateCents: number;
-  setupFeeCents: number;
-  minPriceCents: number;
   leadTimeDays: number;
   strength: number;
   flexibility: number;
@@ -56,9 +54,6 @@ export type QuoteDTO =
       plasticGramsTotal: number;
       unitPriceCents: number;
       totalPriceCents: number;
-      materialCostCents: number;
-      setupFeeCents: number;
-      minPriceFloorApplied: boolean;
       currency: string;
       leadTimeDays: number;
     }

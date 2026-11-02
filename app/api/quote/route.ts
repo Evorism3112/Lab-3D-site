@@ -92,9 +92,6 @@ export async function POST(request: NextRequest) {
       plasticGramsTotal: breakdown.plasticGramsTotal,
       unitPriceCents: breakdown.unitPriceCents,
       totalPriceCents: breakdown.totalPriceCents,
-      materialCostCents: breakdown.materialCostCents,
-      setupFeeCents: breakdown.setupFeeCents,
-      minPriceFloorApplied: breakdown.minPriceFloorApplied,
       currency: "rub",
       leadTimeDays: material.leadTimeDays,
     };

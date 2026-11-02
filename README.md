@@ -35,8 +35,9 @@ the frontend and can be used by other systems too.
 
 Prices come **only from the slicer** (`lib/slicing.ts`): the model is sliced by OrcaSlicer through
 Bambuddy with the admin's presets, and `lib/pricing/engine.ts` (pure function) turns its print time
-and grams into a price — hours × hourly rate + plastic × spool price (with markup), finish multiplier,
-setup fee, minimum price. Rates are set in `/admin/pricing`. Slicing takes seconds to minutes: the
+and grams into a price — (hours × hourly rate + grams × plastic price per gram × markup) × finish
+multiplier. The hourly rate covers everything (work, printer, electricity); the plastic price is the
+spool's cost per kg from Bambuddy (synced with the colors), else the spool price set in `/admin/pricing`. Slicing takes seconds to minutes: the
 configurator shows "calculating" and polls; the customer then sees the price and plastic weight, both
 marked approximate (`≈`). A model the slicer can't price (doesn't fit, Bambuddy down, no preset) is
 still ordered, **without a price** (`priceOnRequest`, 0 ₽): staff agree it with the customer, lead
@@ -118,6 +119,14 @@ admin panel) into the site's env file.
 **Slicer (exact prices):** `server.bat slicer` installs OrcaSlicer + the slicing sidecar for Bambuddy,
 `server.bat slicer-test` checks the whole chain on a test cube, `server.bat slicer-restart` restarts it
 without touching the site. Without it orders go in without a price, to be agreed with the customer.
+
+**Backup / moving to another server:** `server.bat backup [folder]` (or Lab3D.exe → Cleanup →
+“Create backup”) stops the site and lab for about a minute and packs everything into
+`backups\lab3d-backup-<date>.tar.gz`: `database.sql` (pg_dump, plain SQL), `.env.production`,
+`uploads/`, `lab/.env`, `lab/data/` (orders.db + receipts), at the same paths as in the project.
+On Linux, `deploy/linux/restore.sh <archive> <project-dir>` unpacks it into a fresh checkout and
+loads the SQL into an empty database (`$DATABASE_URL`). Bambuddy has its own backup (Settings →
+Backup). The archive holds keys and customer data — keep it private.
 
 Other commands: `bambuddy-start | bambuddy-stop | bambuddy-restart`, `db-push` (interactive schema push
 for changes `update` refuses to apply unattended), `git-check`, `cleanup-cache`.

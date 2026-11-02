@@ -16,8 +16,6 @@ export type PricingMaterial = {
   ownHourlyRateCents: number | null;
   spoolPriceCents: number;
   spoolWeightG: number;
-  setupFeeCents: number;
-  minPriceCents: number;
   leadTimeDays: number;
   active: boolean;
   finishes: { id: string; name: string; multiplier: number }[];
@@ -45,8 +43,6 @@ function MaterialPricingCard({
   );
   const [spoolPrice, setSpoolPrice] = useState(rubles(material.spoolPriceCents));
   const [spoolWeight, setSpoolWeight] = useState(material.spoolWeightG.toString());
-  const [setupFee, setSetupFee] = useState(rubles(material.setupFeeCents));
-  const [minPrice, setMinPrice] = useState(rubles(material.minPriceCents));
   const [leadTime, setLeadTime] = useState(material.leadTimeDays.toString());
   const [active, setActive] = useState(material.active);
   const [multipliers, setMultipliers] = useState<Record<string, string>>(
@@ -64,8 +60,6 @@ function MaterialPricingCard({
     hourlyRateCents: hourlyRate.trim() === "" ? null : Math.round(Number(hourlyRate) * 100),
     spoolPriceCents: Math.round(Number(spoolPrice) * 100),
     spoolWeightG: Math.round(Number(spoolWeight)),
-    setupFeeCents: Math.round(Number(setupFee) * 100),
-    minPriceCents: Math.round(Number(minPrice) * 100),
     leadTimeDays: Number(leadTime),
     active,
     finishes: material.finishes.map((f) => ({ id: f.id, multiplier: Number(multipliers[f.id]) })),
@@ -75,8 +69,6 @@ function MaterialPricingCard({
     const numbers = [
       v.hourlyRateCents ?? 0,
       v.spoolPriceCents,
-      v.setupFeeCents,
-      v.minPriceCents,
       v.leadTimeDays,
       ...v.finishes.map((f) => f.multiplier),
     ];
@@ -109,27 +101,18 @@ function MaterialPricingCard({
     router.refresh();
   };
 
-  // Live example so the admin sees what the numbers mean for a typical part — with the cost price
-  // (printer costs × hours + plastic at the spool price) and the profit, as in the costing sheet.
+  // Live example so the admin sees what the numbers mean for a typical part, split into the
+  // printing hours and the plastic (at this card's spool price; a color priced in Bambuddy uses its own).
   const v = values();
   const example = validate(v)
     ? computePrice({
         sliced: EXAMPLE_SLICE,
         hourlyRateCents: v.hourlyRateCents ?? shopHourlyRateCents(rates),
         plasticMarkupPercent: rates.plasticMarkupPercent,
-        spoolPriceCents: v.spoolPriceCents,
-        spoolWeightG: v.spoolWeightG,
-        setupFeeCents: v.setupFeeCents,
-        minPriceCents: v.minPriceCents,
+        plasticCentsPerGram: v.spoolPriceCents / v.spoolWeightG,
         quantity: 1,
       })
     : null;
-  const exampleCostCents = example
-    ? Math.round(
-        example.printHoursTotal * rates.machinePerHourCents +
-          (example.plasticGramsTotal * v.spoolPriceCents) / v.spoolWeightG,
-      )
-    : 0;
 
   const field = (label: string, value: string, onChange: (v: string) => void, step: string, placeholder?: string) => (
     <label className="flex flex-col gap-1">
@@ -176,8 +159,6 @@ function MaterialPricingCard({
         )}
         {field(t.spoolPriceLabel, spoolPrice, setSpoolPrice, "10")}
         {field(t.spoolWeightLabel, spoolWeight, setSpoolWeight, "50")}
-        {field(t.setupFeeLabel, setupFee, setSetupFee, "1")}
-        {field(t.minPriceLabel, minPrice, setMinPrice, "1")}
         {field(t.leadTimeLabel, leadTime, setLeadTime, "1")}
       </div>
 
@@ -188,8 +169,8 @@ function MaterialPricingCard({
             `${formatPrintTime(example.printHoursTotal, dict.units)}, ${Math.round(example.plasticGramsTotal)} ${dict.units.g}`,
           )}
           : <span className="text-text">{formatCents(example.unitPriceCents, dict.locale)}</span>{" "}
-          ({t.exampleCost} {formatCents(exampleCostCents, dict.locale)}, {t.exampleProfit}{" "}
-          {formatCents(example.unitPriceCents - exampleCostCents, dict.locale)})
+          ({t.exampleTime} {formatCents(example.timeCostCents, dict.locale)}, {t.examplePlastic}{" "}
+          {formatCents(example.plasticCostCents, dict.locale)})
         </p>
       )}
 

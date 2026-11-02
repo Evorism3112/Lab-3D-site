@@ -19,10 +19,10 @@ const DEFAULTS = {
   "contacts.phones": "",
   "contacts.vkGroup": "",
   "contacts.vkChat": "",
-  /** Shop-wide pricing (lib/pricing/defaults.ts ShopRates), rubles and %: an hour of printing is
-   *  work + printer costs for the customer, and the plastic is sold with a markup. */
-  "pricing.laborPerHour": "150",
-  "pricing.machinePerHour": "54",
+  /** Shop-wide pricing (lib/pricing/defaults.ts ShopRates), rubles and %: an hour of printing for
+   *  the customer (work and printer costs in one; was 150 work + 54 printer), and the plastic is
+   *  sold with a markup. */
+  "pricing.laborPerHour": "204",
   "pricing.plasticMarkupPercent": "20",
   /** Slicer quotes (lib/slicing.ts): Bambuddy presets as JSON {source, id, name}; "" = off.
    *  Filament presets are per material id; a material without one gets an automatic pick. */
@@ -92,14 +92,13 @@ export const getContacts = cache(async (): Promise<Contacts> => {
 
 /** Shop-wide pricing rates; a broken value falls back to its default. Loaded once per request. */
 export const getShopRates = cache(async (): Promise<ShopRates> => {
-  const values = await getSettings(["pricing.laborPerHour", "pricing.machinePerHour", "pricing.plasticMarkupPercent"]);
+  const values = await getSettings(["pricing.laborPerHour", "pricing.plasticMarkupPercent"]);
   const num = (key: keyof typeof values) => {
     const n = Number(values[key]);
     return Number.isFinite(n) && n >= 0 ? n : Number(DEFAULTS[key]);
   };
   return {
     laborPerHourCents: Math.round(num("pricing.laborPerHour") * 100),
-    machinePerHourCents: Math.round(num("pricing.machinePerHour") * 100),
     plasticMarkupPercent: num("pricing.plasticMarkupPercent"),
   };
 });

@@ -20,6 +20,7 @@
   server.bat slicer         # установить / переустановить слайсер для точной цены
   server.bat slicer-test    # проверить нарезку целиком (слайсер -> Bambuddy -> тестовый кубик)
   server.bat slicer-restart # перезапустить слайсер (сайт не трогается)
+  server.bat backup [папка] # все данные сайта и «Заказов» в один архив (для переезда / резервная копия)
 #>
 param(
     [Parameter(Position = 0)][string]$Command = "menu",
@@ -600,6 +601,26 @@ function Invoke-SlicerRestart {
     Write-Bad "Слайсер не ответил за 30 секунд - смотрите deploy\logs\slicer-error.log"
 }
 
+# ---------------------------------------------------------------- резервная копия
+# Сайт и «Заказы» на минуту останавливаются, чтобы базы и файлы попали в архив согласованными
+# (заказ не уйдёт в CRM посреди копирования), потом запускаются снова - если работали.
+function Invoke-Backup([string]$OutDir) {
+    if (-not (Test-Installed)) { return }
+    $siteWasRunning = [bool](Read-State)
+    $labWasRunning = Test-Path (Join-Path $script:LabRoot "deploy\state.json")
+    if ($siteWasRunning -or $labWasRunning) { Write-Step "Останавливаю сайт и «Заказы» на время копирования" }
+    if ($siteWasRunning) { Stop-Server }
+    Invoke-Lab stop
+    try {
+        & (Join-Path $PSScriptRoot "backup.ps1") -OutDir $OutDir
+    }
+    catch { Write-Bad $_.Exception.Message; $script:HadError = $true }
+    finally {
+        if ($siteWasRunning) { Write-Step "Запускаю обратно"; Invoke-Start }
+        elseif ($labWasRunning) { Write-Step "Запускаю «Заказы» обратно"; Invoke-Lab start }
+    }
+}
+
 # ---------------------------------------------------------------- Bambuddy (принтеры)
 function Invoke-BambuddyService([string]$Action) {
     $service = Get-Service -Name $script:BambuddyService -ErrorAction SilentlyContinue
@@ -718,11 +739,12 @@ try {
         "slicer" { Invoke-SlicerInstall }
         "slicer-test" { Invoke-SlicerTest }
         "slicer-restart" { Invoke-SlicerRestart }
+        "backup" { Invoke-Backup $Rest[0] }
         # Interactive schema push (asks y/N itself) for changes setup/update refuse to apply unattended.
         "db-push" { Import-EnvFile $script:EnvFile | Out-Null; & npx prisma db push; if ($LASTEXITCODE -ne 0) { Write-Bad "prisma db push не удался." } }
         default {
             Write-Bad "Неизвестная команда: $Command"
-            Write-Info "Доступно: menu, start, stop, restart, status, logs, update, setup, autostart, cleanup, uninstall, slicer"
+            Write-Info "Доступно: menu, start, stop, restart, status, logs, update, setup, autostart, cleanup, uninstall, slicer, backup"
         }
     }
 }

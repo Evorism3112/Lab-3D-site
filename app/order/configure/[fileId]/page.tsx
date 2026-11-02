@@ -60,8 +60,6 @@ export default async function ConfigurePage({
         name: m.name,
         description: localizeCatalogText(m.description, dict.locale),
         hourlyRateCents: resolvePricing(m, rates).hourlyRateCents,
-        setupFeeCents: m.setupFeeCents,
-        minPriceCents: m.minPriceCents,
         leadTimeDays: m.leadTimeDays,
         strength: m.strength,
         flexibility: m.flexibility,

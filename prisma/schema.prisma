@@ -62,6 +62,8 @@ model Material {
   printSpeedCm3PerHour Decimal? @db.Decimal(8, 2)
   densityGcm3          Decimal? @db.Decimal(6, 3)
   infillPercent        Int?
+  // Legacy: setup fee and minimum price, no longer part of the price; kept so `prisma db push`
+  // never drops data.
   setupFeeCents Int     @default(0)
   minPriceCents Int     @default(500)
   leadTimeDays  Int     @default(2)
@@ -101,6 +103,9 @@ model Color {
   stockGrams Int?
   // Price of one spool of this color, kopecks; NULL = the material's spool price.
   spoolPriceCents Int?
+  // Bambuddy: the plastic's cost per kg on its spool (cost_per_kg of the fullest spool that has
+  // one), kopecks, at the last sync. When set it is the price of this color's plastic.
+  bambuddyCostPerKgCents Int?
 
   material   Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]

@@ -9,8 +9,6 @@ const PricingSchema = z.object({
   hourlyRateCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
   spoolPriceCents: z.number().int().min(0).max(100_000_000).optional(),
   spoolWeightG: z.number().int().min(1).max(1_000_000).optional(),
-  setupFeeCents: z.number().int().min(0).max(100_000_000).optional(),
-  minPriceCents: z.number().int().min(0).max(100_000_000).optional(),
   leadTimeDays: z.number().int().min(0).max(365).optional(),
   active: z.boolean().optional(),
   finishes: z

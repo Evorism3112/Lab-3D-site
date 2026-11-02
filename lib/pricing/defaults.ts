@@ -3,18 +3,16 @@
 // right after `prisma db push` and the admin only overrides what differs. The hour rate is the
 // exception: NULL means the shop-wide rate (work + printer costs, admin → Prices).
 
-/** Shop-wide rates (admin → Prices), as in the owner's costing sheet. */
+/** Shop-wide rates (admin → Prices). */
 export type ShopRates = {
-  /** What an hour of printing earns, kopecks. */
+  /** An hour of printing for the customer: work, printer wear, electricity — all in one, kopecks. */
   laborPerHourCents: number;
-  /** What an hour of printing costs: electricity, wear, kopecks. */
-  machinePerHourCents: number;
-  /** Markup on the plastic over its spool price, %. */
+  /** Markup on the plastic over its cost, %. */
   plasticMarkupPercent: number;
 };
 
 /** The customer's price of an hour of printing. */
-export const shopHourlyRateCents = (rates: ShopRates) => rates.laborPerHourCents + rates.machinePerHourCents;
+export const shopHourlyRateCents = (rates: ShopRates) => rates.laborPerHourCents;
 
 export type ResolvedPricing = {
   /** Printer time for the customer, kopecks per hour. */

@@ -26,8 +26,6 @@ export async function GET() {
         hourlyRateCents: p.hourlyRateCents,
         spoolPriceCents: p.spoolPriceCents,
         spoolWeightG: p.spoolWeightG,
-        setupFeeCents: m.setupFeeCents,
-        minPriceCents: m.minPriceCents,
         leadTimeDays: m.leadTimeDays,
         strength: m.strength,
         flexibility: m.flexibility,

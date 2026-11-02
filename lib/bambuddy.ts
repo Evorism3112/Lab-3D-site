@@ -116,6 +116,8 @@ export type BambuddySpool = {
   rgba: string | null;
   label_weight: number;
   weight_used: number;
+  /** Price of the plastic per kg, in Bambuddy's currency (Settings → currency); null = not set. */
+  cost_per_kg?: number | null;
 };
 
 /** Active (not archived) spools of the Bambuddy inventory; the key needs inventory:read. */

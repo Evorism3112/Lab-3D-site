@@ -16,6 +16,8 @@ export type AdminColor = {
   source: string;
   stockGrams: number | null;
   spoolPriceCents: number | null;
+  /** Cost per kg from the Bambuddy spool, kopecks; when set it prices this color's plastic. */
+  bambuddyCostPerKgCents: number | null;
   /** Whether customers can pick it right now (lib/colorSync.ts isColorAvailable). */
   available: boolean;
 };
@@ -111,6 +113,12 @@ function ColorRow({
         {fromBambuddy ? formatTemplate(t.colorStockGrams, color.stockGrams ?? 0) : t.colorManual}
         {!color.available && ` · ${t.colorHidden}`}
       </span>
+      {color.bambuddyCostPerKgCents !== null ? (
+        // Priced in Bambuddy (spool → cost per kg): that wins, so there is nothing to edit here.
+        <span className="w-[9.5rem] shrink-0 text-right text-xs text-accent" title={t.colorBambuddyPriceHint}>
+          {formatTemplate(t.colorBambuddyPrice, rubles(color.bambuddyCostPerKgCents))}
+        </span>
+      ) : (
       <label className="flex shrink-0 items-center gap-1 text-xs text-muted" title={t.colorSpoolPriceHint}>
         {t.colorSpoolPrice}
         <input
@@ -126,6 +134,7 @@ function ColorRow({
           className="w-24 px-2 py-1.5 text-sm"
         />
       </label>
+      )}
       {/* A synced color comes back on the next sync, so only manual colors can be deleted. */}
       {fromBambuddy ? (
         <span className="w-5 shrink-0" />

@@ -28,7 +28,6 @@ const SettingsSchema = z
     pricing: z
       .object({
         laborPerHour: z.number().min(0).max(1_000_000),
-        machinePerHour: z.number().min(0).max(1_000_000),
         plasticMarkupPercent: z.number().min(0).max(1000),
       })
       .optional(),
@@ -80,7 +79,6 @@ export async function PATCH(request: NextRequest) {
   }
   if (parsed.data.pricing !== undefined) {
     await setSetting("pricing.laborPerHour", String(parsed.data.pricing.laborPerHour));
-    await setSetting("pricing.machinePerHour", String(parsed.data.pricing.machinePerHour));
     await setSetting("pricing.plasticMarkupPercent", String(parsed.data.pricing.plasticMarkupPercent));
   }
   if (parsed.data.slicer !== undefined) {

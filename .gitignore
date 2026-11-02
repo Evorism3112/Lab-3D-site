@@ -61,3 +61,6 @@ next-env.d.ts
 /deploy/operation.json
 /deploy/gui-operation.json
 /deploy/slicer/
+
+# backups made by server.bat backup (passwords and customer data inside)
+/backups/

@@ -79,6 +79,9 @@ export default async function HomePage() {
               </ScrollParallax>
             </div>
 
+            {/* Same drift as the title and the subtitle below: without it the subtitle scrolled up
+                over the photos. */}
+            <ScrollParallax>
             <Reveal delayMs={100}>
               <div>
                 <Link
@@ -90,13 +93,20 @@ export default async function HomePage() {
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   {showcaseSlots.map((item, i) =>
                     item ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
+                      // Toned down on the green hero (the photos have bright white backgrounds): the
+                      // dark-green base shows through; on hover the photo comes out in full.
+                      <Link
                         key={item.id}
-                        src={`/api/showcase/${item.id}/raw`}
-                        alt={item.title}
-                        className="aspect-square w-full rounded-xl border border-white/20 object-cover"
-                      />
+                        href="/works"
+                        className="group block overflow-hidden rounded-xl bg-[#0b1f0b] shadow-[0_10px_30px_-12px_rgba(11,31,11,0.6)] ring-1 ring-[#0b1f0b]/25"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/showcase/${item.id}/raw`}
+                          alt={item.title}
+                          className="aspect-square w-full object-cover opacity-80 saturate-[0.85] transition duration-300 group-hover:opacity-100 group-hover:saturate-100"
+                        />
+                      </Link>
                     ) : (
                       <div
                         key={`empty-${i}`}
@@ -109,6 +119,7 @@ export default async function HomePage() {
                 </div>
               </div>
             </Reveal>
+            </ScrollParallax>
           </div>
 
           <div className="w-full border-t border-white/15 pb-4 pt-6">

@@ -18,6 +18,7 @@ import db, {
   deleteOrder,
   createOrUpdateExternalOrder,
   markExternalOrderPaid,
+  findOrderByExternalId,
   listSerials,
   generateSerial,
   colorLabel,
@@ -1173,6 +1174,21 @@ const server = http.createServer(async (req, res) => {
         connectors: CONNECTORS.map(({ letter, label, plugLabel }) => ({ letter, label, plugLabel })),
         products: catalogProducts(),
       });
+    }
+
+    // Статусы заказов с сайта по их внешним номерам (?ids=taclab-a,taclab-b): сайт показывает их в
+    // своей админке. Заказа нет (удалён в CRM) — null.
+    if (pathname === '/api/external/orders/statuses' && req.method === 'GET') {
+      if (!checkExternalAuth(req)) return sendJson(res, 401, { error: 'Неверный API-ключ' });
+      const ids = (url.searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 200);
+      const statuses = {};
+      for (const id of ids) {
+        const order = findOrderByExternalId(id);
+        statuses[id] = order
+          ? { status: order.status, label: STATUSES.find((s) => s.id === order.status)?.label || order.status }
+          : null;
+      }
+      return sendJson(res, 200, { statuses });
     }
 
     // Фото товаров для магазина TACLAB (сайт отдаёт их покупателям от своего имени).

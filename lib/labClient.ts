@@ -263,3 +263,17 @@ export async function fetchLabProductPhoto(file: string): Promise<{ data: Buffer
     return null;
   }
 }
+
+/**
+ * CRM statuses of orders by external id ("taclab-…"): { label } or null when the CRM no longer has
+ * the order (deleted there). null as a whole when the CRM can't be asked.
+ */
+export async function fetchOrderStatusesFromLab(
+  externalIds: string[],
+): Promise<Record<string, { status: string; label: string } | null> | null> {
+  if (externalIds.length === 0) return {};
+  const data = (await callLab(`/api/external/orders/statuses?ids=${externalIds.map(encodeURIComponent).join(",")}`, {
+    method: "GET",
+  })) as { statuses?: Record<string, { status: string; label: string } | null> } | null;
+  return data?.statuses ?? null;
+}

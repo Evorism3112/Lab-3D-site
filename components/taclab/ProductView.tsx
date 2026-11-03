@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Brackets } from "@/components/taclab/Brackets";
+import { DeliveryEstimate } from "@/components/taclab/DeliveryEstimate";
 import { PhotoOrMark } from "@/components/taclab/PhotoOrMark";
 import { addToCart } from "@/lib/taclab/cart";
 import { rub, shopPath } from "@/lib/taclab/format";
@@ -82,6 +83,8 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
               {stockLabel(p)}
             </span>
           </div>
+
+          <DeliveryEstimate slug={p.slug} qty={qty} />
 
           {p.colors.length > 0 && (
             <fieldset className="flex flex-col gap-3">

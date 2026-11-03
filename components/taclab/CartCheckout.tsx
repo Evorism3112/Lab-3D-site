@@ -10,6 +10,7 @@ import { DELIVERY_SERVICES, formatAddressLine, type DeliveryService } from "@/li
 import type { AddressSuggestion } from "@/lib/addressSuggest";
 import type { DeliveryQuote } from "@/lib/labClient";
 import { clearCart, setQty, useCart, type CartLine } from "@/lib/taclab/cart";
+import { saveCity, savedCity } from "@/lib/taclab/city";
 import { rub, shopPath } from "@/lib/taclab/format";
 import type { ShopColor, ShopConnector } from "@/lib/taclab/product";
 
@@ -70,7 +71,12 @@ export function CartCheckout({ base }: { base: string }) {
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [catalogError, setCatalogError] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", email: "", service: DELIVERY_SERVICES[0] as DeliveryService, extra: "", comment: "" });
-  const [city, setCity] = useState<Picked>({ text: "", picked: null });
+  // The city chosen on a product page (price with delivery) comes in filled. The form renders only
+  // once the cart is read in the browser, so this initial value never meets server HTML.
+  const [city, setCity] = useState<Picked>(() => {
+    const saved = savedCity();
+    return saved ? { text: saved.value, picked: saved } : { text: "", picked: null };
+  });
   const [street, setStreet] = useState<Picked>({ text: "", picked: null });
   const [house, setHouse] = useState<Picked>({ text: "", picked: null });
   const [delivery, setDelivery] = useState<{ key: string; quote: DeliveryQuote | null } | null>(null);
@@ -273,6 +279,7 @@ export function CartCheckout({ base }: { base: string }) {
           onChange={(text) => setCity({ text, picked: null })}
           onSelect={(s) => {
             setCity({ text: s.value, picked: s });
+            saveCity(s);
             if (s.value !== city.picked?.value) {
               setStreet({ text: "", picked: null });
               setHouse({ text: "", picked: null });

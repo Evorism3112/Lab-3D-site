@@ -39,6 +39,8 @@ export type AdminShopOrder = {
   goodsTotalRub: number;
   items: string;
   sentToCrm: boolean;
+  /** Status in the CRM ("Собрать", "Архив"…); null when the CRM didn't answer. */
+  crmStatus: string | null;
 };
 
 const rub = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
@@ -306,7 +308,7 @@ export function TaclabAdmin({
                     <td className="py-2 pr-3 text-muted">{o.deliveryService}</td>
                     <td className="py-2">
                       {o.sentToCrm ? (
-                        <span className="text-accent">в CRM</span>
+                        <span className="text-accent">{o.crmStatus ?? "в CRM"}</span>
                       ) : (
                         <button type="button" onClick={() => resend(o.id)} disabled={resending === o.id} className="text-danger hover:underline">
                           {resending === o.id ? "…" : "не дошёл — отправить"}

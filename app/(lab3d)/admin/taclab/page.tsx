@@ -1,5 +1,6 @@
 import { TaclabAdmin, type AdminShopOrder, type AdminShopProduct } from "@/components/admin/TaclabAdmin";
 import { prisma } from "@/lib/db";
+import { fetchOrderStatusesFromLab } from "@/lib/labClient";
 import { getShopCatalog, labCatalog } from "@/lib/taclab/catalog";
 
 // TACLAB shop content: products come from the CRM catalog (price, weight, variants); here they get
@@ -42,7 +43,12 @@ export default async function AdminTaclabPage() {
     };
   });
 
-  const adminOrders: AdminShopOrder[] = orders.map((o) => ({
+  // The CRM is where orders are worked on: show their status from there, and leave out the ones
+  // deleted there (the site keeps its copy - the customer's "order placed" page still opens).
+  const statuses = await fetchOrderStatusesFromLab(orders.filter((o) => o.sentToCrm).map((o) => `taclab-${o.id}`));
+  const listed = orders.filter((o) => !(o.sentToCrm && statuses && statuses[`taclab-${o.id}`] === null));
+
+  const adminOrders: AdminShopOrder[] = listed.map((o) => ({
     id: o.id,
     createdAt: o.createdAt.toISOString(),
     name: o.name,
@@ -51,6 +57,7 @@ export default async function AdminTaclabPage() {
     goodsTotalRub: o.goodsTotalRub,
     items: ((o.items as { crmName: string; quantity: number }[]) ?? []).map((i) => `${i.crmName} × ${i.quantity}`).join(", "),
     sentToCrm: o.sentToCrm,
+    crmStatus: statuses?.[`taclab-${o.id}`]?.label ?? null,
   }));
 
   return (

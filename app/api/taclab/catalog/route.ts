@@ -16,7 +16,7 @@ export async function GET() {
       modelCode: p.modelCode,
       colors: p.colors,
       connectors: p.connectors,
-      photoId: p.photoIds[0] ?? null,
+      photo: p.photos[0] ?? null,
     })),
   });
 }

@@ -51,6 +51,7 @@
           <th>Цена, ₽</th>
           <th>Вес 1 шт, г</th>
           <th>Состав</th>
+          <th>Фото</th>
           <th style="width:50px"></th>
         </tr>
       </thead>
@@ -583,6 +584,103 @@ function openComposition(row) {
   });
 }
 
+// ---- Фото товара (показывает магазин TACLAB; первое — главное) ----
+function photosLabel(list) {
+  return list.length ? `📷 ${list.length}` : '📷 Добавить';
+}
+
+// Фото с камеры — 5–25 МБ: уменьшаем в браузере до 1600 px и сохраняем JPEG (без геометок EXIF).
+function shrinkPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+      resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`${file.name}: не картинка`));
+    };
+    img.src = url;
+  });
+}
+
+function openPhotos(row) {
+  const name = row.querySelector('[data-k="name"]').value.trim() || 'товар';
+  const overlay = el(`<div class="modal-overlay"><div class="modal-box acc-modal" style="max-width:760px">
+    <h3>Фото: ${escapeText(name)}</h3>
+    <p class="muted acc-hint">Эти фото показывает магазин TACLAB. Первое — главное (на карточке в каталоге).
+      Лучше всего — на тёмном фоне с боковым светом. Фото с камеры уменьшаются при загрузке.</p>
+    <div id="photo-grid" style="display:flex;flex-wrap:wrap;gap:10px;margin:12px 0"></div>
+    <label class="secondary small" style="display:inline-block;cursor:pointer">
+      + Загрузить фото
+      <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none">
+    </label>
+    <span id="photo-status" class="muted" style="margin-left:10px"></span>
+    <div class="modal-actions acc-modal-actions">
+      <div class="spacer"></div>
+      <button type="button" class="secondary" data-close>Отмена</button>
+      <button type="button" id="photo-ok">Готово</button>
+    </div>
+  </div></div>`);
+  document.body.appendChild(overlay);
+  let photos = [...(row._photos || [])];
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const grid = overlay.querySelector('#photo-grid');
+  const status = overlay.querySelector('#photo-status');
+  const render = () => {
+    grid.innerHTML = '';
+    if (!photos.length) grid.appendChild(el('<p class="muted">Фото ещё нет.</p>'));
+    photos.forEach((file, i) => {
+      const card = el(`<div style="width:120px;display:flex;flex-direction:column;gap:4px">
+        <img src="/api/catalog/photos/${encodeURIComponent(file)}" alt="" style="width:120px;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--border, #ddd)">
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          ${i === 0 ? '<span class="muted">главное</span>' : '<button type="button" class="secondary small" data-first>Главное</button>'}
+          <button type="button" class="secondary small" data-remove title="Убрать">✕</button>
+        </div>
+      </div>`);
+      card.querySelector('[data-first]')?.addEventListener('click', () => { photos = [file, ...photos.filter((f) => f !== file)]; render(); });
+      card.querySelector('[data-remove]').addEventListener('click', () => { photos = photos.filter((f) => f !== file); render(); });
+      grid.appendChild(card);
+    });
+  };
+  render();
+  overlay.querySelector('#photo-input').addEventListener('change', async (e) => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    for (const [i, file] of files.entries()) {
+      status.textContent = `Загружаем ${i + 1} из ${files.length}…`;
+      try {
+        const dataBase64 = await shrinkPhoto(file);
+        const { file: saved } = await api('/api/catalog/photos', {
+          method: 'POST',
+          body: JSON.stringify({ filename: 'photo.jpg', dataBase64 }),
+        });
+        photos.push(saved);
+        render();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+    status.textContent = '';
+  });
+  overlay.querySelector('#photo-ok').addEventListener('click', () => {
+    row._photos = photos;
+    row.querySelector('.photo-btn').textContent = photosLabel(photos);
+    close();
+    saveProducts('Фото сохранены'); // сразу в базу, как состав
+  });
+}
+
 function addProductRow(t = {}) {
   const modelOptions = ['<option value="">—</option>', ...catalogModels.map((m) => `<option value="${m.id}">${escapeText(m.label)}</option>`)].join('');
   const row = el(`
@@ -592,6 +690,7 @@ function addProductRow(t = {}) {
       <td><input data-k="price" type="number" min="0" step="0.01"></td>
       <td><input data-k="weight_g" type="number" min="0" step="1"></td>
       <td><button type="button" class="secondary small comp-btn" style="white-space:nowrap"></button></td>
+      <td><button type="button" class="secondary small photo-btn" style="white-space:nowrap"></button></td>
       <td><button type="button" class="secondary small remove-item" title="Удалить">✕</button></td>
     </tr>
   `);
@@ -600,6 +699,10 @@ function addProductRow(t = {}) {
   const compBtn = row.querySelector('.comp-btn');
   compBtn.textContent = compositionLabel(row._components);
   compBtn.addEventListener('click', () => openComposition(row));
+  row._photos = Array.isArray(t.photos) ? t.photos : [];
+  const photoBtn = row.querySelector('.photo-btn');
+  photoBtn.textContent = photosLabel(row._photos);
+  photoBtn.addEventListener('click', () => openPhotos(row));
   row.querySelector('.remove-item').addEventListener('click', () => row.remove());
   productBody.appendChild(row);
 }
@@ -622,6 +725,7 @@ async function saveProducts(message = 'Товары сохранены') {
     const t = {};
     for (const input of row.querySelectorAll('[data-k]')) t[input.dataset.k] = input.value.trim();
     t.components = row._components || [];
+    t.photos = row._photos || [];
     return t;
   }).filter((t) => t.name);
   try {

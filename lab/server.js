@@ -100,6 +100,13 @@ const uploadsDir = path.join(__dirname, 'data', 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
 const PORT = process.env.PORT || 3000;
 const MAX_RECEIPT_BYTES = 15 * 1024 * 1024;
+// Фото товаров каталога (Настройки → Каталог): их показывает магазин TACLAB. Браузер уменьшает их до
+// 1600 px перед загрузкой, так что файлы небольшие.
+const productPhotosDir = path.join(__dirname, 'data', 'uploads', 'products');
+fs.mkdirSync(productPhotosDir, { recursive: true });
+const MAX_PRODUCT_PHOTO_BYTES = 8 * 1024 * 1024;
+const PRODUCT_PHOTO_NAME = /^[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/;
+const PHOTO_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -369,6 +376,10 @@ function cleanProductTemplates(list) {
       price: Math.max(0, Math.round((Number(t?.price) || 0) * 100) / 100),
       weight_g: Math.max(0, Math.round(Number(t?.weight_g) || 0)),
       // Состав для учёта на складе: компонент × количество на 1 шт; цвет/разъём — строка только для такого варианта.
+      // Имена файлов из data/uploads/products, первое — главное фото.
+      photos: (Array.isArray(t?.photos) ? t.photos : [])
+        .filter((f) => typeof f === 'string' && PRODUCT_PHOTO_NAME.test(f))
+        .slice(0, 20),
       components: (Array.isArray(t?.components) ? t.components : [])
         .map((c) => ({
           component_id: Number(c?.component_id) || 0,
@@ -381,9 +392,44 @@ function cleanProductTemplates(list) {
     .filter((t) => t.name);
 }
 
+// Фото, которых нет ни у одного товара, удаляем — но не моложе часа: только что загруженное фото
+// попадает в каталог следующим сохранением.
+function cleanupProductPhotos(templates) {
+  const used = new Set(templates.flatMap((t) => t.photos || []));
+  for (const file of fs.readdirSync(productPhotosDir)) {
+    if (used.has(file) || !PRODUCT_PHOTO_NAME.test(file)) continue;
+    const full = path.join(productPhotosDir, file);
+    try {
+      if (Date.now() - fs.statSync(full).mtimeMs > 3600e3) fs.unlinkSync(full);
+    } catch {
+      // уже удалён
+    }
+  }
+}
+
+function sendProductPhoto(res, file) {
+  if (!PRODUCT_PHOTO_NAME.test(file)) return sendJson(res, 404, { error: 'Фото не найдено' });
+  fs.readFile(path.join(productPhotosDir, file), (err, buf) => {
+    if (err) return sendJson(res, 404, { error: 'Фото не найдено' });
+    res.writeHead(200, {
+      'Content-Type': PHOTO_MIME[file.split('.').pop()],
+      // Имя файла уникально: новое фото — новое имя.
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(buf);
+  });
+}
+
 // Список «Товар» в форме заказа — только каталог из Настроек → Каталог.
 function catalogProducts() {
-  return readProductTemplates().map((t) => ({ label: t.name, model_id: t.model_id, price: t.price, weight_g: t.weight_g }));
+  return readProductTemplates().map((t) => ({
+    label: t.name,
+    model_id: t.model_id,
+    price: t.price,
+    weight_g: t.weight_g,
+    photos: Array.isArray(t.photos) ? t.photos : [],
+  }));
 }
 
 // Ozon отдаёт сумму объектом { amount: "123.00", currency_code: "RUB" } (иногда — числом/строкой),
@@ -948,7 +994,12 @@ const server = http.createServer(async (req, res) => {
         if (host.startsWith('crm.')) siteUrl = `${proto}://${host.slice(4)}`;
         else if (/^(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+)(:\d+)?$/.test(host)) siteUrl = `http://${host.split(':')[0]}:3000`;
       }
-      return sendJson(res, 200, { site_admin_url: siteUrl ? `${siteUrl.replace(/\/$/, '')}/admin/showcase` : '' });
+      const base = siteUrl.replace(/\/$/, '');
+      // Обе админки - на основном сайте: «Лаборатории 3Д» и магазина TACLAB (/admin/taclab).
+      return sendJson(res, 200, {
+        site_admin_url: base ? `${base}/admin/showcase` : '',
+        taclab_admin_url: base ? `${base}/admin/taclab` : '',
+      });
     }
 
     if (pathname === '/api/auth/me' && req.method === 'GET') {
@@ -1122,6 +1173,13 @@ const server = http.createServer(async (req, res) => {
         connectors: CONNECTORS.map(({ letter, label, plugLabel }) => ({ letter, label, plugLabel })),
         products: catalogProducts(),
       });
+    }
+
+    // Фото товаров для магазина TACLAB (сайт отдаёт их покупателям от своего имени).
+    const externalPhotoMatch = pathname.match(/^\/api\/external\/catalog\/photos\/([^/]+)$/);
+    if (externalPhotoMatch && req.method === 'GET') {
+      if (!checkExternalAuth(req)) return sendJson(res, 401, { error: 'Неверный API-ключ' });
+      return sendProductPhoto(res, externalPhotoMatch[1]);
     }
 
     // Расчёт доставки для оформления заказа на сайте — тот же, что в форме нового заказа CRM.
@@ -1394,8 +1452,23 @@ const server = http.createServer(async (req, res) => {
       const templates = cleanProductTemplates(data.templates);
       setSetting('product_templates', JSON.stringify(templates));
       syncAllOrdersStock(); // заказы в сборке с новым составом — списать
+      cleanupProductPhotos(templates);
       return sendJson(res, 200, { templates });
     }
+
+    // Фото товара: загрузка (JSON с base64, как у чеков) и просмотр в CRM.
+    if (pathname === '/api/catalog/photos' && req.method === 'POST') {
+      const data = await readBody(req);
+      const ext = String(data.filename || '').split('.').pop().toLowerCase();
+      if (!PHOTO_MIME[ext] || !data.dataBase64) return sendJson(res, 400, { error: 'Нужна картинка JPG, PNG или WEBP' });
+      const buffer = Buffer.from(data.dataBase64, 'base64');
+      if (buffer.length > MAX_PRODUCT_PHOTO_BYTES) return sendJson(res, 400, { error: 'Фото больше 8 МБ' });
+      const file = `${crypto.randomUUID()}.${ext}`;
+      fs.writeFileSync(path.join(productPhotosDir, file), buffer);
+      return sendJson(res, 201, { file });
+    }
+    const productPhotoMatch = pathname.match(/^\/api\/catalog\/photos\/([^/]+)$/);
+    if (productPhotoMatch && req.method === 'GET') return sendProductPhoto(res, productPhotoMatch[1]);
 
     if ((pathname === '/api/ozon/box-templates' || pathname === '/api/catalog/boxes') && req.method === 'GET') {
       return sendJson(res, 200, { templates: readBoxTemplates() });

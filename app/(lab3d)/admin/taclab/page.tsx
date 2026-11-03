@@ -23,7 +23,8 @@ export default async function AdminTaclabPage() {
       revision: p.revision,
       allColors: p.modelId && lab ? lab.colors.map((c) => ({ letter: c.letter, name: c.shortLabel || c.label, swatch: c.swatch })) : [],
       allConnectors: p.modelId && lab ? lab.connectors.map((k) => ({ letter: k.letter, name: k.plugLabel || k.label })) : [],
-      photos: p.photoIds,
+      photos: p.shopPhotoIds,
+      crmPhotos: p.photos.filter((src) => src.startsWith("/api/taclab/crm-photos/")),
       content: {
         slug: p.slug,
         visible: p.visible,
@@ -56,7 +57,8 @@ export default async function AdminTaclabPage() {
     <div>
       <h1 className="text-2xl font-bold text-text">TACLAB</h1>
       <p className="mt-1 text-sm text-muted">
-        Магазин готовых изделий: товары и цены — из каталога CRM, здесь — их страницы. Заказы уходят в CRM.
+        Магазин готовых изделий: товары, цены и фото — из каталога CRM (Настройки → Каталог), здесь — описание и
+        характеристики. Товар из CRM сразу появляется в магазине; снимите «Показывать», чтобы скрыть. Заказы уходят в CRM.
       </p>
       <div className="mt-6">
         <TaclabAdmin products={adminProducts} orders={adminOrders} crmReachable={crmReachable} shopUrl={shopUrl} />

@@ -22,7 +22,10 @@ export type ShopProduct = {
   specs: { key: string; value: string }[];
   compatibility: string | null;
   kit: string | null;
-  photoIds: string[];
+  /** Photo URLs: the CRM's (Настройки → Каталог → Фото) first, then those uploaded in the site admin. */
+  photos: string[];
+  /** Ids of the site-uploaded ones (the admin deletes / reorders those). */
+  shopPhotoIds: string[];
   visible: boolean;
 };
 

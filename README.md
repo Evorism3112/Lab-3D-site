@@ -86,8 +86,10 @@ A shop of TACLAB's own finished products, in the same app with its own look:
   root, shows nothing else there, and pages build links from the `x-shop-base` header it sets.
 - Products come from the CRM catalog (lab → Настройки → Каталог, via `GET /api/external/catalog`): name,
   price, weight, model and its colors/connectors. The CRM stays the only place where prices are set.
-  Copy, specs, photos and visibility are in `TaclabProduct` / `TaclabPhoto`, edited in `/admin/taclab`.
-  Photos are cut to 1600 px JPEG without metadata on upload (`lib/taclab/photos.ts`, sharp).
+  Product photos are added in the CRM too (Настройки → Каталог → 📷, shrunk to 1600 px in the browser) and
+  served to visitors through `/api/taclab/crm-photos/<file>`. A CRM product is in the shop at once; copy, specs,
+  extra photos and hiding are in `TaclabProduct` / `TaclabPhoto`, edited in `/admin/taclab` (CRM menu:
+  «TAC-Lab настройка»; the 3D-print admin is «LAB-3D настройка»).
 - Cart in the browser (`lib/taclab/cart.ts`). Checkout reuses the address suggestions and the CRM delivery quote.
   Orders are saved (`TaclabOrder`) and sent to the CRM as `taclab-<id>` with its own products (`hardware`
   items: model, color and connector letters), so stock, assembly and serial numbers work. If the CRM is down

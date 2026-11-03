@@ -22,7 +22,7 @@ const STEPS = [
 
 export default async function ShopHome() {
   const [base, { products, crmReachable }] = await Promise.all([getShopBase(), getShopCatalog()]);
-  const hero = products.find((p) => p.photoIds.length > 0) ?? products[0];
+  const hero = products.find((p) => p.photos.length > 0) ?? products[0];
 
   return (
     <>
@@ -55,7 +55,7 @@ export default async function ShopHome() {
           </div>
 
           <div className="tl-frame aspect-square min-w-0 max-w-[560px] flex-[1_1_440px]">
-            {hero && <PhotoOrMark id={hero.photoIds[0]} alt={hero.name} markSize={96} eager />}
+            {hero && <PhotoOrMark src={hero.photos[0]} alt={hero.name} markSize={96} eager />}
             <Brackets size={26} />
             {hero?.modelCode && (
               <>

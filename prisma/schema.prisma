@@ -258,7 +258,8 @@ model TaclabProduct {
   // The CRM product template name (its "Товар"), which is how the two are matched.
   crmName       String   @unique
   slug          String   @unique
-  visible       Boolean  @default(false)
+  // Shown by default: a CRM product is in the shop until it's hidden here.
+  visible       Boolean  @default(true)
   inStock       Boolean  @default(true)
   // Days to ship when not in stock (or to assemble), shown as "под заказ · N дн.".
   leadTimeDays  Int?

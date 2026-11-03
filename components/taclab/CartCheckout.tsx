@@ -26,7 +26,7 @@ type CatalogItem = {
   modelCode: string | null;
   colors: ShopColor[];
   connectors: ShopConnector[];
-  photoId: string | null;
+  photo: string | null;
 };
 
 type Picked = { text: string; picked: AddressSuggestion | null };
@@ -205,7 +205,7 @@ export function CartCheckout({ base }: { base: string }) {
           {lines.map(({ line, p }) => (
             <li key={`${line.slug}|${line.color}|${line.connector}`} className="flex gap-4 border-b border-tl-line py-5">
               <Link href={shopPath(base, `/p/${p.slug}`)} className="tl-frame relative h-24 w-24 flex-none overflow-hidden">
-                <PhotoOrMark id={p.photoId ?? undefined} alt={p.name} markSize={36} />
+                <PhotoOrMark src={p.photo} alt={p.name} markSize={36} />
               </Link>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <Link href={shopPath(base, `/p/${p.slug}`)} className="tl-display text-xl font-semibold hover:text-white">

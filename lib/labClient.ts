@@ -194,7 +194,8 @@ export type LabCatalog = {
   models: { id: string; label: string; code: string; revision: number }[];
   colors: { letter: string; label: string; shortLabel: string; swatch: string }[];
   connectors: { letter: string; label: string; plugLabel: string }[];
-  products: { label: string; model_id: string; price: number; weight_g: number }[];
+  /** photos: file names in the CRM (Настройки → Каталог → Фото), the first is the main one. */
+  products: { label: string; model_id: string; price: number; weight_g: number; photos?: string[] }[];
 };
 
 /** null when lab is not configured, unreachable or too old to have /api/external/catalog. */
@@ -246,4 +247,19 @@ export async function pushTaclabOrderToLab(order: {
     }),
   });
   return result !== null;
+}
+
+/** A product photo from the CRM catalog; null when it's missing or the CRM is unreachable. */
+export async function fetchLabProductPhoto(file: string): Promise<{ data: Buffer; contentType: string } | null> {
+  if (!LAB_API_URL || !/^[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/.test(file)) return null;
+  try {
+    const res = await fetch(`${LAB_API_URL}/api/external/catalog/photos/${file}`, {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    return { data: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get("content-type") ?? "image/jpeg" };
+  } catch {
+    return null;
+  }
 }

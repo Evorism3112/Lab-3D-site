@@ -267,14 +267,16 @@ async function initSidebarUser() {
     window.location.href = '/login.html';
   });
 
-  // Админка основного сайта (лаборатория 3D) — из CRM переключаемся туда, из админки — обратно сюда.
+  // Админки сайтов: «Лаборатории 3Д» и магазина TACLAB — из CRM переключаемся туда, из админки — обратно сюда.
   if (me.role === 'admin') {
     try {
-      const { site_admin_url: adminUrl } = await api('/api/config');
+      const { site_admin_url: adminUrl, taclab_admin_url: taclabUrl } = await api('/api/config');
       const nav = document.querySelector('.sidebar-nav');
       if (adminUrl && nav && !nav.querySelector('a[data-site-admin]')) {
-        const link = el(`<a href="${adminUrl}" data-site-admin><span class="nav-icon">🛠</span><span class="label">Админка сайта</span></a>`);
-        nav.appendChild(link);
+        nav.appendChild(el(`<a href="${adminUrl}" data-site-admin><span class="nav-icon">🛠</span><span class="label">LAB-3D настройка</span></a>`));
+      }
+      if (taclabUrl && nav && !nav.querySelector('a[data-taclab-admin]')) {
+        nav.appendChild(el(`<a href="${taclabUrl}" data-taclab-admin><span class="nav-icon">🎯</span><span class="label">TAC-Lab настройка</span></a>`));
       }
     } catch {
       // без ссылки на админку CRM работает как обычно

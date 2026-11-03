@@ -11,7 +11,7 @@ export function ProductCard({ product: p, base }: { product: ShopProduct; base: 
       className="tl-card-hover flex flex-col overflow-hidden rounded-[2px] border border-tl-line bg-tl-card"
     >
       <div className="relative aspect-[4/3]" style={{ background: "radial-gradient(circle at 50% 45%, #202227 0%, #141518 75%)" }}>
-        <PhotoOrMark id={p.photoIds[0]} alt={p.name} />
+        <PhotoOrMark src={p.photos[0]} alt={p.name} />
         {p.modelCode && (
           <span className="tl-mono absolute left-4 top-4 rounded-[2px] bg-tl-accent px-2 py-[3px] text-xs text-tl-bg">
             {p.modelCode} · {p.revision}

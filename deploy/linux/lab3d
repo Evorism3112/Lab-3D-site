@@ -357,6 +357,17 @@ cmd_status() {
   show_unit "HTTPS (Caddy)" caddy
   show_unit "PostgreSQL" postgresql
   if panel_enabled; then show_unit "Веб-панель" lab3d-panel "https://panel.$base"; else printf '  %-14s %sвыключена - lab3d panel-on%s\n' "Веб-панель" "$C_DIM" "$C_END"; fi
+  # Магазин TACLAB - то же приложение, что сайт: работает вместе с ним. Свой домен - если задан и есть в Caddy.
+  local shop; shop=$(env_get "$ENV_FILE" TACLAB_DOMAIN); shop=${shop%%,*}
+  if [[ -n $shop ]]; then
+    if grep -q "^$shop {" "$CADDY_FILE" 2>/dev/null; then
+      printf '  %-14s %s %s\n' "Магазин" "https://$shop" "$C_DIM(вместе с сайтом)$C_END"
+    else
+      printf '  %-14s %s%s нет в конфиге Caddy - выполните: sudo lab3d config%s\n' "Магазин" "$C_WARN" "$shop" "$C_END"
+    fi
+  else
+    printf '  %-14s %s %s\n' "Магазин" "${d:+https://$d/shop}" "${C_DIM}свой домен: sudo lab3d shop-domain shop.$base$C_END"
+  fi
   echo
   printf '  %-14s %s\n' "Версия" "$(git -c safe.directory='*' -C "$ROOT" log -1 --format='%h · %cd · %s' --date=format:'%d.%m.%Y %H:%M' 2>/dev/null || echo '-')"
   printf '  %-14s загрузки %s · логи %s · бэкапы %s\n' "Диск" \

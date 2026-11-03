@@ -36,19 +36,19 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
         {/* Галерея */}
         <div className="flex min-w-0 flex-[1_1_520px] flex-col gap-3">
           <div className="tl-frame aspect-square overflow-hidden">
-            <PhotoOrMark id={p.photoIds[shot]} alt={`${p.name}${colorName ? `, ${colorName.toLowerCase()}` : ""}`} markSize={90} eager />
+            <PhotoOrMark src={p.photos[shot]} alt={`${p.name}${colorName ? `, ${colorName.toLowerCase()}` : ""}`} markSize={90} eager />
             <Brackets />
-            {p.photoIds.length > 1 && (
+            {p.photos.length > 1 && (
               <span className="tl-mono absolute bottom-6 left-7 text-xs text-tl-soft">
-                {String(shot + 1).padStart(2, "0")} / {String(p.photoIds.length).padStart(2, "0")}
+                {String(shot + 1).padStart(2, "0")} / {String(p.photos.length).padStart(2, "0")}
               </span>
             )}
           </div>
-          {p.photoIds.length > 1 && (
+          {p.photos.length > 1 && (
             <div className="grid grid-cols-4 gap-3" role="group" aria-label="Фото изделия">
-              {p.photoIds.map((id, i) => (
+              {p.photos.map((src, i) => (
                 <button
-                  key={id}
+                  key={src}
                   type="button"
                   onClick={() => setShot(i)}
                   aria-label={`Фото ${i + 1}`}
@@ -56,7 +56,7 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
                   className="relative aspect-square cursor-pointer overflow-hidden rounded-[2px] bg-tl-card"
                   style={{ border: i === shot ? "2px solid var(--tl-accent)" : "1px solid var(--tl-line)" }}
                 >
-                  <PhotoOrMark id={id} alt="" />
+                  <PhotoOrMark src={src} alt="" />
                 </button>
               ))}
             </div>

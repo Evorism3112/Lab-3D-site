@@ -10,7 +10,10 @@ export type AdminShopProduct = {
   revision: string | null;
   allColors: { letter: string; name: string; swatch: string }[];
   allConnectors: { letter: string; name: string }[];
+  /** Site-uploaded photo ids. */
   photos: string[];
+  /** Photo URLs from the CRM catalog: shown first in the shop, edited in the CRM. */
+  crmPhotos: string[];
   content: {
     slug: string;
     visible: boolean;
@@ -198,14 +201,27 @@ function ProductEditor({ product, shopUrl }: { product: AdminShopProduct; shopUr
       </div>
 
       <div className="mt-4">
-        <span className="text-xs text-muted">Фото (первое — главное; фото с камеры уменьшаются при загрузке)</span>
+        <span className="text-xs text-muted">
+          Фото: сначала из CRM (меняются в CRM → Настройки → Каталог → Фото), потом загруженные здесь. Фото с камеры
+          уменьшаются при загрузке.
+        </span>
         <div className="mt-2 flex flex-wrap gap-3">
+          {product.crmPhotos.map((src) => (
+            <div key={src} className="flex w-28 flex-col gap-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt="" className="aspect-square w-28 rounded-md border border-border object-cover" />
+              <span className="text-xs text-muted">из CRM</span>
+            </div>
+          ))}
           {product.photos.map((id, i) => (
             <div key={id} className="flex w-28 flex-col gap-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`/api/taclab/photos/${id}`} alt="" className="aspect-square w-28 rounded-md border border-border object-cover" />
               <div className="flex justify-between text-xs">
-                {i > 0 ? (
+                {/* With CRM photos the main one is the CRM's first: order here only among these. */}
+                {product.crmPhotos.length > 0 ? (
+                  <span className="text-muted">доп.</span>
+                ) : i > 0 ? (
                   <button type="button" onClick={() => photoAction(id, "PATCH")} className="text-accent hover:underline">
                     Главное
                   </button>

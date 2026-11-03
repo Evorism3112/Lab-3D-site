@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { fetchCatalogFromLab, type LabCatalog } from "@/lib/labClient";
+import { photoUrl } from "@/lib/taclab/format";
 import type { ShopProduct } from "@/lib/taclab/product";
 
 export type { ShopProduct } from "@/lib/taclab/product";
@@ -76,7 +77,9 @@ export async function getShopCatalog({ includeHidden = false, fresh = false } = 
   const products: ShopProduct[] = [];
   for (const p of lab.products) {
     const row = byName.get(p.label);
-    if (!includeHidden && !row?.visible) continue;
+    // A CRM product is in the shop as soon as it is in the CRM; the admin can hide it.
+    const visible = row?.visible ?? true;
+    if (!includeHidden && !visible) continue;
     const model = lab.models.find((m) => m.id === p.model_id) ?? null;
     // Colors and connectors exist for the CRM's own models; other products have no variants.
     const colors = model
@@ -103,8 +106,12 @@ export async function getShopCatalog({ includeHidden = false, fresh = false } = 
       specs: parseSpecs(row?.specs ?? null),
       compatibility: row?.compatibility ?? null,
       kit: row?.kit ?? null,
-      photoIds: row?.photos.map((ph) => ph.id) ?? [],
-      visible: row?.visible ?? false,
+      photos: [
+        ...(p.photos ?? []).map((file) => `/api/taclab/crm-photos/${file}`),
+        ...(row?.photos ?? []).map((ph) => photoUrl(ph.id)),
+      ],
+      shopPhotoIds: row?.photos.map((ph) => ph.id) ?? [],
+      visible,
     });
   }
   // Shop order: the admin's sort order for products with content, the CRM order for the rest.

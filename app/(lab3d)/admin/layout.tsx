@@ -40,6 +40,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <Link href="/admin/contacts" className="text-muted transition-colors hover:text-accent">
           {t.contactsTitle}
         </Link>
+        {/* A brand name: the same in both languages. */}
+        <Link href="/admin/taclab" className="text-muted transition-colors hover:text-accent">
+          TACLAB
+        </Link>
         <a
           href={getCrmUrl()}
           className="ml-auto rounded-lg border border-border px-3 py-1 text-text transition-colors hover:border-accent hover:text-accent"

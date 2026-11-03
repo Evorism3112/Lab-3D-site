@@ -249,3 +249,60 @@ model ModelRequest {
   photoKeys   String[]
   createdAt   DateTime @default(now())
 }
+
+// ---- TACLAB shop (app/(taclab)/shop) ----
+// Prices, weights and variants come from the CRM catalog (lab: Настройки → Каталог, matched by
+// crmName); everything the CRM doesn't know - copy, photos, specs, visibility - lives here.
+model TaclabProduct {
+  id            String   @id @default(cuid())
+  // The CRM product template name (its "Товар"), which is how the two are matched.
+  crmName       String   @unique
+  slug          String   @unique
+  visible       Boolean  @default(false)
+  inStock       Boolean  @default(true)
+  // Days to ship when not in stock (or to assemble), shown as "под заказ · N дн.".
+  leadTimeDays  Int?
+  tagline       String?
+  description   String?
+  // "Ключ: значение" per line.
+  specs         String?
+  compatibility String?
+  kit           String?
+  // Allowed variants as CRM letters ("OBD", "TM"); empty = every color / connector of the model.
+  colors        String   @default("")
+  connectors    String   @default("")
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  photos TaclabPhoto[]
+}
+
+model TaclabPhoto {
+  id         String   @id @default(cuid())
+  productId  String
+  storageKey String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  product TaclabProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// A shop order as placed; the CRM gets it as an external order "taclab-<id>".
+model TaclabOrder {
+  id               String   @id @default(cuid())
+  createdAt        DateTime @default(now())
+  name             String
+  phone            String
+  email            String?
+  deliveryService  String
+  // One line the CRM splits into city / street / house / extra (lib/address.ts).
+  address          String
+  deliveryPriceRub Int?
+  goodsTotalRub    Int
+  // [{ crmName, modelId, color, connector, quantity, priceRub }]
+  items            Json
+  comment          String?
+  // False when the CRM was unreachable: the admin can send it again.
+  sentToCrm        Boolean  @default(false)
+}

@@ -188,3 +188,62 @@ export async function quoteDeliveryFromLab(input: {
   if (!result?.kind) return null;
   return { point: result.point, candidates: result.candidates ?? [], price: result.price };
 }
+
+/** The CRM's product catalog (Настройки → Каталог) for the TACLAB shop; prices in rubles. */
+export type LabCatalog = {
+  models: { id: string; label: string; code: string; revision: number }[];
+  colors: { letter: string; label: string; shortLabel: string; swatch: string }[];
+  connectors: { letter: string; label: string; plugLabel: string }[];
+  products: { label: string; model_id: string; price: number; weight_g: number }[];
+};
+
+/** null when lab is not configured, unreachable or too old to have /api/external/catalog. */
+export async function fetchCatalogFromLab(): Promise<LabCatalog | null> {
+  const data = (await callLab("/api/external/catalog", { method: "GET" })) as LabCatalog | null;
+  return data && Array.isArray(data.products) ? data : null;
+}
+
+/**
+ * A TACLAB shop order into the CRM as its own products ("hardware": model, color and connector
+ * letters as in the CRM's order form), so stock, assembly and serial numbers work as for orders
+ * taken by hand. Same external channel and source as the 3D-print site's orders. Returns whether
+ * the CRM accepted it.
+ */
+export async function pushTaclabOrderToLab(order: {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  deliveryService: string;
+  address: string;
+  deliveryPriceRub: number | null;
+  comment: string | null;
+  items: { crmName: string; modelId: string | null; color: string; connector: string; quantity: number; priceRub: number }[];
+}): Promise<boolean> {
+  const result = await callLab("/api/external/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      external_order_id: `taclab-${order.id}`,
+      customer_email: order.email ?? "",
+      full_name: order.name,
+      phone: order.phone,
+      delivery_service: order.deliveryService,
+      pvz_address: order.address,
+      shipping_address: order.address,
+      delivery_price: order.deliveryPriceRub ?? undefined,
+      payment_status: "unpaid",
+      notes: ["Заказ с сайта TACLAB.", order.comment ? `Комментарий: ${order.comment}` : ""].filter(Boolean).join("\n"),
+      items: order.items.map((item, i) => ({
+        item_kind: "hardware",
+        model_id: item.modelId ?? "",
+        product_name: item.crmName,
+        color: item.color,
+        connector: item.connector,
+        quantity: item.quantity,
+        price: item.priceRub,
+        external_ref: `taclab-${order.id}-${i + 1}`,
+      })),
+    }),
+  });
+  return result !== null;
+}

@@ -12,7 +12,7 @@ import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
 import { getContacts } from "@/lib/settings";
 
-import "./globals.css";
+import "../globals.css";
 
 const inter = Inter({
   variable: "--font-inter",

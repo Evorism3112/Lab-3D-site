@@ -75,6 +75,24 @@ empty database; `SEED_RESET=1` rewrites it.
 To run lab locally next to the site, see `lab/README.md` (it needs its own port, e.g. `PORT=3001`),
 then set `LAB_API_URL=http://127.0.0.1:3001`.
 
+## TACLAB shop (second site)
+
+A shop of TACLAB's own finished products, in the same app with its own look:
+
+- Routes: `app/(lab3d)` is the 3D-print site, `app/(taclab)` the shop. Each group has its own root layout (and
+  stylesheet, `taclab.css`, with `tl-` color names). Shop pages live under `app/(taclab)/shop`.
+- Domains: on the main site the shop is at `/shop`. With `TACLAB_DOMAIN` set (comma-separated; on Linux
+  `sudo lab3d shop-domain taclab.ru` also writes the Caddy block), `proxy.ts` serves the shop at the domain's
+  root, shows nothing else there, and pages build links from the `x-shop-base` header it sets.
+- Products come from the CRM catalog (lab → Настройки → Каталог, via `GET /api/external/catalog`): name,
+  price, weight, model and its colors/connectors. The CRM stays the only place where prices are set.
+  Copy, specs, photos and visibility are in `TaclabProduct` / `TaclabPhoto`, edited in `/admin/taclab`.
+  Photos are cut to 1600 px JPEG without metadata on upload (`lib/taclab/photos.ts`, sharp).
+- Cart in the browser (`lib/taclab/cart.ts`). Checkout reuses the address suggestions and the CRM delivery quote.
+  Orders are saved (`TaclabOrder`) and sent to the CRM as `taclab-<id>` with its own products (`hardware`
+  items: model, color and connector letters), so stock, assembly and serial numbers work. If the CRM is down
+  the order is kept, and `/admin/taclab` can send it again.
+
 ## Running on a Windows server (static IP, HTTPS, domain)
 
 Works like a VPS: the site listens on the machine's IP behind [Caddy](https://caddyserver.com), which

@@ -13,6 +13,7 @@
 #   lab3d panel-password       # пароль веб-панели (panel.<домен>)
 #   lab3d panel-on|panel-off   # включить / выключить веб-панель
 #   lab3d config               # пересоздать службы systemd и конфиг Caddy
+#   lab3d shop-domain [домен]  # домен магазина TACLAB (пусто - только /shop на основном сайте)
 #
 # deploy/linux/install.sh ставит копию этого файла в /usr/local/sbin/lab3d (владелец root, путь к
 # проекту вписан). Копия, а не ссылка: файлы проекта принадлежат пользователю lab3d, от имени
@@ -260,6 +261,9 @@ write_caddy() {
       [[ -n $crm ]] && caddy_site "$crm" "$(crm_port)" 100MB
       caddy_site "bambu.$base" "$(bambuddy_port)" 1GB
       panel_enabled && caddy_site "panel.$base" "$(panel_port)" 1MB 'X-Robots-Tag "noindex, nofollow"'
+      # Магазин TACLAB - то же приложение; proxy.ts по домену показывает на нём только магазин.
+      local shop
+      for shop in $(env_get "$ENV_FILE" TACLAB_DOMAIN | tr ',' ' '); do caddy_site "$shop" "$(app_port)" 10MB; done
     else
       # Без домена - HTTPS на IP с сертификатом от собственного центра Caddy (браузер предупредит).
       local ip; ip=$(hostname -I | awk '{print $1}')
@@ -672,6 +676,26 @@ cmd_panel_action() {
   esac
 }
 
+# ---------------------------------------------------------------- магазин TACLAB
+
+cmd_shop_domain() {
+  need_root shop-domain "$@"
+  local domain=${1:-}
+  domain=${domain#https://}; domain=${domain%/}
+  if [[ -n $domain && ! $domain =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(,[a-z0-9]([a-z0-9.-]*[a-z0-9])?)*$ ]]; then
+    die "Домен: латиница, цифры, точки и дефисы (несколько - через запятую)"
+  fi
+  env_set "$ENV_FILE" TACLAB_DOMAIN "$domain"
+  cmd_config
+  # proxy.ts читает домен при запуске сайта.
+  systemctl restart lab3d-site
+  if [[ -n $domain ]]; then
+    ok "Магазин: https://${domain%%,*} (DNS-запись A -> внешний IP; сертификат Caddy выпустит сам)"
+  else
+    ok "Свой домен у магазина убран: он открывается на https://$(domain)/shop"
+  fi
+}
+
 # ---------------------------------------------------------------- main
 
 # deploy/linux/install.sh подключает этот файл ради функций - тогда команд не выполняем.
@@ -694,7 +718,8 @@ case $cmd in
   panel-on) cmd_panel_on ;;
   panel-off) cmd_panel_off ;;
   panel-action) cmd_panel_action "$@" ;;
+  shop-domain) cmd_shop_domain "$@" ;;
   git-check) cmd_git_check "${1:-fetch}" ;;
-  help|-h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|-h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "Неизвестная команда: $cmd (lab3d help)" ;;
 esac

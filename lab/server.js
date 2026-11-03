@@ -1112,6 +1112,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 201, createOrUpdateExternalOrder(data));
     }
 
+    // Каталог изделий для магазина TACLAB (сайт, магазин): модели, цвета, разъёмы и товары с ценой
+    // и весом из Настроек → Каталог. Состав и склад наружу не отдаём.
+    if (pathname === '/api/external/catalog' && req.method === 'GET') {
+      if (!checkExternalAuth(req)) return sendJson(res, 401, { error: 'Неверный API-ключ' });
+      return sendJson(res, 200, {
+        models: MODELS,
+        colors: COLORS.map(({ letter, label, shortLabel, swatch }) => ({ letter, label, shortLabel, swatch })),
+        connectors: CONNECTORS.map(({ letter, label, plugLabel }) => ({ letter, label, plugLabel })),
+        products: catalogProducts(),
+      });
+    }
+
     // Расчёт доставки для оформления заказа на сайте — тот же, что в форме нового заказа CRM.
     if (pathname === '/api/external/delivery/quote' && req.method === 'POST') {
       if (!checkExternalAuth(req)) return sendJson(res, 401, { error: 'Неверный API-ключ' });

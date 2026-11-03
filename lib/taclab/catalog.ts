@@ -10,10 +10,12 @@ export { serialPrefix, stockLabel } from "@/lib/taclab/product";
 // the shop's own content (TaclabProduct: copy, photos, visibility). The CRM stays the one place
 // where prices are set; a product it doesn't list isn't sold, whatever the shop has for it.
 
-const CACHE_MS = 60_000;
+// Short: a change in the CRM (price, main photo) should show in the shop within seconds, and the
+// CRM is on the same machine, so a fetch costs next to nothing.
+const CACHE_MS = 10_000;
 let cache: { at: number; value: LabCatalog | null } | null = null;
 
-/** The CRM catalog, cached for a minute: every shop page needs it and it changes rarely. */
+/** The CRM catalog, cached for a few seconds: every shop page needs it. */
 export async function labCatalog(fresh = false): Promise<LabCatalog | null> {
   if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const value = await fetchCatalogFromLab();

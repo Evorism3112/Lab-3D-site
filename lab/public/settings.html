@@ -626,15 +626,21 @@ function openPhotos(row) {
     <span id="photo-status" class="muted" style="margin-left:10px"></span>
     <div class="modal-actions acc-modal-actions">
       <div class="spacer"></div>
-      <button type="button" class="secondary" data-close>Отмена</button>
       <button type="button" id="photo-ok">Готово</button>
     </div>
   </div></div>`);
   document.body.appendChild(overlay);
   let photos = [...(row._photos || [])];
-  const close = () => overlay.remove();
+  const initial = JSON.stringify(photos);
+  // Любое закрытие сохраняет: раньше клик мимо окна молча терял выбранное главное фото и загрузки.
+  const close = () => {
+    overlay.remove();
+    if (JSON.stringify(photos) === initial) return;
+    row._photos = photos;
+    row.querySelector('.photo-btn').textContent = photosLabel(photos);
+    saveProducts('Фото сохранены'); // сразу в базу, как состав
+  };
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector('[data-close]').addEventListener('click', close);
   const grid = overlay.querySelector('#photo-grid');
   const status = overlay.querySelector('#photo-status');
   const render = () => {
@@ -673,12 +679,7 @@ function openPhotos(row) {
     }
     status.textContent = '';
   });
-  overlay.querySelector('#photo-ok').addEventListener('click', () => {
-    row._photos = photos;
-    row.querySelector('.photo-btn').textContent = photosLabel(photos);
-    close();
-    saveProducts('Фото сохранены'); // сразу в базу, как состав
-  });
+  overlay.querySelector('#photo-ok').addEventListener('click', close);
 }
 
 function addProductRow(t = {}) {

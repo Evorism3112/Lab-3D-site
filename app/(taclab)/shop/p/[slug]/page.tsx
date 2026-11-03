@@ -21,7 +21,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const others = products.filter((p) => p.slug !== slug).slice(0, 3);
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 pb-24 pt-7 sm:px-8">
+    <div className="mx-auto max-w-[1240px] px-4 pb-16 pt-5 sm:px-8 md:pb-24 md:pt-7">
       <nav aria-label="Навигация" className="tl-mono flex flex-wrap gap-2 text-xs tracking-[0.06em] text-tl-muted">
         <Link href={shopPath(base)} className="hover:text-white">ГЛАВНАЯ</Link>
         <span aria-hidden>/</span>
@@ -33,9 +33,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <ProductView product={product} base={base} />
 
       {others.length > 0 && (
-        <section aria-labelledby="related-title" className="mt-24">
-          <h2 id="related-title" className="tl-display mb-7 text-[40px] font-bold">С этим берут</h2>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5">
+        <section aria-labelledby="related-title" className="mt-16 md:mt-24">
+          <h2 id="related-title" className="tl-display mb-6 text-3xl font-bold sm:mb-7 sm:text-[40px]">С этим берут</h2>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-4 sm:gap-5">
             {others.map((p) => (
               <ProductCard key={p.crmName} product={p} base={base} />
             ))}

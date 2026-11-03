@@ -32,9 +32,9 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
 
   return (
     <>
-      <section className="mt-7 flex flex-wrap items-start gap-12">
+      <section className="mt-5 flex flex-wrap items-start gap-8 md:mt-7 md:gap-12">
         {/* Галерея */}
-        <div className="flex min-w-0 flex-[1_1_520px] flex-col gap-3">
+        <div className="flex w-full min-w-0 flex-[1_1_520px] flex-col gap-3">
           <div className="tl-frame aspect-square overflow-hidden">
             <PhotoOrMark src={p.photos[shot]} alt={`${p.name}${colorName ? `, ${colorName.toLowerCase()}` : ""}`} markSize={90} eager />
             <Brackets />
@@ -45,7 +45,7 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
             )}
           </div>
           {p.photos.length > 1 && (
-            <div className="grid grid-cols-4 gap-3" role="group" aria-label="Фото изделия">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3" role="group" aria-label="Фото изделия">
               {p.photos.map((src, i) => (
                 <button
                   key={src}
@@ -64,19 +64,19 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
         </div>
 
         {/* Покупка */}
-        <div className="flex min-w-0 flex-[1_1_400px] flex-col gap-6">
+        <div className="flex w-full min-w-0 flex-[1_1_400px] flex-col gap-6">
           <div className="flex flex-col gap-3">
             {p.modelCode && (
               <span className="tl-mono text-[13px] tracking-[0.08em] text-tl-accent">
                 {p.modelCode} · РЕВИЗИЯ {p.revision}
               </span>
             )}
-            <h1 className="tl-display text-[clamp(40px,5vw,56px)] font-bold leading-[0.98]">{p.name}</h1>
+            <h1 className="tl-display hyphens-auto break-words text-[clamp(30px,8vw,56px)] font-bold leading-[0.98]">{p.name}</h1>
             {p.tagline && <p className="text-base leading-relaxed text-tl-soft">{p.tagline}</p>}
           </div>
 
           <div className="flex flex-wrap items-baseline gap-x-5 gap-y-3 border-b border-tl-line pb-6">
-            <span className="tl-display text-[44px] font-semibold leading-none">{rub(p.priceRub)}</span>
+            <span className="tl-display text-[38px] font-semibold leading-none sm:text-[44px]">{rub(p.priceRub)}</span>
             <span className={`tl-mono inline-flex items-center gap-2 text-xs uppercase ${p.inStock ? "text-tl-accent" : "text-tl-muted"}`}>
               <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: p.inStock ? "var(--tl-accent)" : "var(--tl-muted)" }} />
               {stockLabel(p)}
@@ -177,9 +177,9 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
       </section>
 
       {/* Описание и вкладки */}
-      <section className="mt-20">
-        {p.description && <p className="mb-12 max-w-[820px] whitespace-pre-line text-base leading-relaxed text-tl-soft">{p.description}</p>}
-        <div role="tablist" aria-label="Описание изделия" className="flex flex-wrap gap-1 border-b border-white/10">
+      <section className="mt-14 md:mt-20">
+        {p.description && <p className="mb-10 max-w-[820px] whitespace-pre-line text-base leading-relaxed text-tl-soft md:mb-12">{p.description}</p>}
+        <div role="tablist" aria-label="Описание изделия" className="-mx-4 flex gap-1 overflow-x-auto border-b border-white/10 px-4 sm:mx-0 sm:px-0">
           {visibleTabs.map((t) => (
             <button
               key={t.id}
@@ -187,7 +187,7 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
               role="tab"
               aria-selected={t.id === tab}
               onClick={() => setTab(t.id)}
-              className="tl-display -mb-px min-h-12 cursor-pointer px-5 text-[19px] font-semibold tracking-[0.06em]"
+              className="tl-display -mb-px min-h-12 shrink-0 cursor-pointer whitespace-nowrap px-4 text-[17px] font-semibold tracking-[0.06em] sm:px-5 sm:text-[19px]"
               style={{
                 borderBottom: t.id === tab ? "2px solid var(--tl-accent)" : "2px solid transparent",
                 color: t.id === tab ? "var(--tl-text)" : "var(--tl-muted)",
@@ -197,13 +197,13 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
             </button>
           ))}
         </div>
-        <div role="tabpanel" className="max-w-[820px] overflow-x-auto pt-7 text-base leading-relaxed text-tl-soft">
+        <div role="tabpanel" className="max-w-[820px] overflow-x-auto pt-6 text-base leading-relaxed text-tl-soft md:pt-7">
           {tab === "specs" && (
             <table className="w-full border-collapse text-[15px]">
               <tbody>
                 {p.specs.map((r) => (
                   <tr key={r.key} className="border-b border-tl-line">
-                    <th scope="row" className="tl-mono w-2/5 py-3.5 pr-6 text-left text-xs font-normal uppercase tracking-[0.08em] text-tl-muted">
+                    <th scope="row" className="tl-mono w-2/5 py-3.5 pr-4 text-left align-top text-xs font-normal uppercase tracking-[0.08em] text-tl-muted sm:pr-6">
                       {r.key}
                     </th>
                     <td className="py-3.5 text-tl-text">{r.value}</td>

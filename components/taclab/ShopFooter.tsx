@@ -6,7 +6,7 @@ import { shopPath } from "@/lib/taclab/format";
 export function ShopFooter({ base, contacts }: { base: string; contacts: { phones: Phone[]; vk: string } }) {
   return (
     <footer className="mt-auto border-t border-tl-line">
-      <div className="mx-auto flex max-w-[1240px] flex-wrap justify-between gap-8 px-6 py-12 sm:px-8">
+      <div className="mx-auto flex max-w-[1240px] flex-wrap justify-between gap-8 px-4 py-10 sm:px-8 sm:py-12">
         <div className="flex max-w-[360px] flex-col gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/taclab/logo-white.svg" alt="TACLAB" className="h-[30px] w-auto self-start" />
@@ -17,7 +17,7 @@ export function ShopFooter({ base, contacts }: { base: string; contacts: { phone
             </a>
           </span>
         </div>
-        <div className="flex flex-wrap gap-12 text-sm leading-8">
+        <div className="flex flex-wrap gap-x-12 gap-y-6 text-sm leading-8">
           <div className="flex flex-col">
             <span className="tl-mono mb-1.5 text-xs text-tl-muted">МАГАЗИН</span>
             <Link href={`${shopPath(base)}#catalog`} className="hover:text-white">Каталог</Link>

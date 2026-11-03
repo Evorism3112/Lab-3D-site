@@ -8,8 +8,8 @@ export const metadata: Metadata = { title: "Корзина" };
 export default async function CartPage() {
   const base = await getShopBase();
   return (
-    <div className="mx-auto max-w-[1240px] px-6 pb-24 pt-10 sm:px-8">
-      <h1 className="tl-display mb-8 text-5xl font-bold">Корзина</h1>
+    <div className="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:px-8 md:pb-24 md:pt-10">
+      <h1 className="tl-display mb-6 text-4xl font-bold sm:mb-8 sm:text-5xl">Корзина</h1>
       <CartCheckout base={base} />
     </div>
   );

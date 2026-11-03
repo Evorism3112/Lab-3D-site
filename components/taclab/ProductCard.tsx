@@ -18,8 +18,8 @@ export function ProductCard({ product: p, base }: { product: ShopProduct; base: 
           </span>
         )}
       </div>
-      <div className="flex flex-grow flex-col gap-3 px-5 pb-5 pt-5">
-        <strong className="tl-display text-2xl font-semibold leading-tight">{p.name}</strong>
+      <div className="flex flex-grow flex-col gap-3 p-4 sm:p-5">
+        <strong className="tl-display hyphens-auto break-words text-[22px] font-semibold leading-tight sm:text-2xl">{p.name}</strong>
         {p.tagline && <span className="text-sm leading-relaxed text-tl-muted">{p.tagline}</span>}
         {p.colors.length > 0 && (
           <div className="flex items-center gap-1.5" aria-label={`Цвета: ${p.colors.map((c) => c.name).join(", ")}`}>
@@ -29,7 +29,7 @@ export function ProductCard({ product: p, base }: { product: ShopProduct; base: 
           </div>
         )}
         <div className="mt-auto flex items-baseline justify-between gap-3 border-t border-tl-line pt-3.5">
-          <span className="tl-display text-[26px] font-semibold">{rub(p.priceRub)}</span>
+          <span className="tl-display text-2xl font-semibold sm:text-[26px]">{rub(p.priceRub)}</span>
           <span className={`tl-mono text-xs uppercase ${p.inStock ? "text-tl-accent" : "text-tl-muted"}`}>{stockLabel(p)}</span>
         </div>
       </div>

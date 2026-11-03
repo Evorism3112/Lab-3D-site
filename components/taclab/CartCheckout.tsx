@@ -193,9 +193,9 @@ export function CartCheckout({ base }: { base: string }) {
       .join(" · ");
 
   return (
-    <div className="flex flex-wrap items-start gap-12">
+    <div className="flex flex-wrap items-start gap-8 md:gap-12">
       {/* Товары */}
-      <section aria-label="Товары" className="flex min-w-0 flex-[1_1_480px] flex-col">
+      <section aria-label="Товары" className="flex w-full min-w-0 flex-[1_1_480px] flex-col">
         {!catalog && !catalogError && <p className="text-tl-muted">Загружаем цены…</p>}
         {catalogError && <p className="text-tl-danger">Каталог временно недоступен — цены появятся, как только он ответит.</p>}
         {missing > 0 && (
@@ -203,29 +203,29 @@ export function CartCheckout({ base }: { base: string }) {
         )}
         <ul className="flex flex-col border-t border-tl-line">
           {lines.map(({ line, p }) => (
-            <li key={`${line.slug}|${line.color}|${line.connector}`} className="flex gap-4 border-b border-tl-line py-5">
-              <Link href={shopPath(base, `/p/${p.slug}`)} className="tl-frame relative h-24 w-24 flex-none overflow-hidden">
+            <li key={`${line.slug}|${line.color}|${line.connector}`} className="flex gap-3 border-b border-tl-line py-4 sm:gap-4 sm:py-5">
+              <Link href={shopPath(base, `/p/${p.slug}`)} className="tl-frame relative h-20 w-20 flex-none overflow-hidden sm:h-24 sm:w-24">
                 <PhotoOrMark src={p.photo} alt={p.name} markSize={36} />
               </Link>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <Link href={shopPath(base, `/p/${p.slug}`)} className="tl-display text-xl font-semibold hover:text-white">
+                <Link href={shopPath(base, `/p/${p.slug}`)} className="tl-display hyphens-auto break-words text-lg font-semibold leading-tight hover:text-white sm:text-xl">
                   {p.name}
                 </Link>
                 {variantText(line, p) && <span className="tl-mono text-xs uppercase text-tl-muted">{variantText(line, p)}</span>}
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="flex h-10 items-center rounded-[2px] border border-tl-line-strong" role="group" aria-label="Количество">
-                    <button type="button" onClick={() => setQty(line, line.qty - 1)} aria-label="Меньше" className="h-full w-10 cursor-pointer text-lg">
+                  <div className="flex h-11 items-center rounded-[2px] border border-tl-line-strong" role="group" aria-label="Количество">
+                    <button type="button" onClick={() => setQty(line, line.qty - 1)} aria-label="Меньше" className="h-full w-11 cursor-pointer text-lg">
                       −
                     </button>
                     <span className="tl-mono min-w-8 text-center text-sm">{line.qty}</span>
-                    <button type="button" onClick={() => setQty(line, line.qty + 1)} aria-label="Больше" className="h-full w-10 cursor-pointer text-lg">
+                    <button type="button" onClick={() => setQty(line, line.qty + 1)} aria-label="Больше" className="h-full w-11 cursor-pointer text-lg">
                       +
                     </button>
                   </div>
                   <span className="tl-display text-xl font-semibold">{rub(p.priceRub * line.qty)}</span>
                 </div>
               </div>
-              <button type="button" onClick={() => setQty(line, 0)} aria-label={`Убрать «${p.name}»`} className="h-8 w-8 flex-none cursor-pointer text-tl-muted hover:text-white">
+              <button type="button" onClick={() => setQty(line, 0)} aria-label={`Убрать «${p.name}»`} className="-mr-2 -mt-2 h-11 w-11 flex-none cursor-pointer text-tl-muted hover:text-white">
                 ✕
               </button>
             </li>
@@ -240,7 +240,7 @@ export function CartCheckout({ base }: { base: string }) {
       </section>
 
       {/* Оформление */}
-      <form onSubmit={submit} className="flex min-w-0 flex-[1_1_380px] flex-col gap-4 rounded-[2px] border border-tl-line bg-tl-panel p-6">
+      <form onSubmit={submit} className="flex w-full min-w-0 flex-[1_1_380px] flex-col gap-4 rounded-[2px] border border-tl-line bg-tl-panel p-4 sm:p-6">
         <h2 className="tl-display text-2xl font-bold">Оформление</h2>
         <Field label="Имя и фамилия" value={form.name} onChange={(v) => setForm({ ...form, name: v })} autoComplete="name" />
         <Field label="Телефон" type="tel" value={form.phone} placeholder="+7 900 000-00-00" onChange={(v) => setForm({ ...form, phone: v })} autoComplete="tel" />
@@ -279,7 +279,7 @@ export function CartCheckout({ base }: { base: string }) {
             }
           }}
         />
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4">
+        <div className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <AddressField
             label="Улица"
             level="street"

@@ -93,18 +93,19 @@ export default async function HomePage() {
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   {showcaseSlots.map((item, i) =>
                     item ? (
-                      // Toned down on the green hero (the photos have bright white backgrounds): the
-                      // dark-green base shows through; on hover the photo comes out in full.
+                      // Tinted with the brand green so the bright white photo backgrounds don't glare
+                      // on the hero: a multiply layer turns white into light mint and keeps dark
+                      // parts dark. On hover it fades out and the real photo shows.
                       <Link
                         key={item.id}
                         href="/works"
-                        className="group block overflow-hidden rounded-xl bg-[#0b1f0b] shadow-[0_10px_30px_-12px_rgba(11,31,11,0.6)] ring-1 ring-[#0b1f0b]/25"
+                        className="group relative block overflow-hidden rounded-xl shadow-[0_10px_30px_-12px_rgba(11,31,11,0.6)] ring-1 ring-[#0b1f0b]/25"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/showcase/${item.id}/raw`}
-                          alt={item.title}
-                          className="aspect-square w-full object-cover opacity-80 saturate-[0.85] transition duration-300 group-hover:opacity-100 group-hover:saturate-100"
+                        <img src={`/api/showcase/${item.id}/raw`} alt={item.title} className="aspect-square w-full object-cover" />
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-0 bg-accent opacity-40 mix-blend-multiply transition-opacity duration-300 group-hover:opacity-0"
                         />
                       </Link>
                     ) : (
@@ -122,8 +123,9 @@ export default async function HomePage() {
             </ScrollParallax>
           </div>
 
-          <div className="w-full border-t border-white/15 pb-4 pt-6">
-            <ScrollParallax>
+          <div className="w-full pb-4">
+            {/* The divider drifts with the text: on the static wrapper it cut through the text on scroll. */}
+            <ScrollParallax className="border-t border-white/15 pt-6">
               <Reveal delayMs={120}>
                 <TextMask lightClassName="text-accent/90" darkClassName="text-[#0b1f0b]/90">
                   <p className="max-w-none text-lg leading-relaxed sm:text-xl">{home.subtitle}</p>

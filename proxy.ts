@@ -18,16 +18,15 @@ export function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const { pathname } = request.nextUrl;
   const headers = new Headers(request.headers);
+  // Only this file decides what is the shop's domain: a header a visitor sent counts for nothing.
+  headers.delete("x-taclab-shop");
 
   if (SHOP_HOSTS.has(host)) {
     headers.set("x-shop-base", "");
-    // The shop's domain shows only the shop: everything else (the 3D-print site, its admin) 404s.
-    if (pathname === "/shop" || pathname.startsWith("/shop/")) {
-      return NextResponse.next({ request: { headers } });
-    }
-    const url = request.nextUrl.clone();
-    url.pathname = `/shop${pathname === "/" ? "" : pathname}`;
-    return NextResponse.rewrite(url, { request: { headers } });
+    // /x on the shop's domain is /shop/x: the rewrite itself is in next.config.ts (see there why),
+    // this header turns it on. The shop's domain shows only the shop - anything else 404s.
+    if (pathname !== "/shop" && !pathname.startsWith("/shop/")) headers.set("x-taclab-shop", "1");
+    return NextResponse.next({ request: { headers } });
   }
 
   // Once the shop has its own domain, /shop on the main site moves there for good: one address for

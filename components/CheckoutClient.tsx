@@ -4,18 +4,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { AddressField } from "@/components/AddressField";
-import { DELIVERY_SERVICES, formatAddressLine, type DeliveryService } from "@/lib/address";
+import { CHECKOUT_SERVICES, DELIVERY_SERVICES, formatAddressLine, PICKUP, type CheckoutService, type DeliveryService } from "@/lib/address";
 import type { AddressSuggestion } from "@/lib/addressSuggest";
 import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import type { DeliveryQuote } from "@/lib/labClient";
 import { formatAmount, formatCents } from "@/lib/money";
+import { pickupDistanceKm, roundKm, type PickupInfo } from "@/lib/pickupNear";
 import type { QuoteDTO } from "@/lib/types";
 
 // Carriers the CRM can price (lab quoteDelivery); Russian Post is priced by hand.
 const QUOTED_SERVICES: DeliveryService[] = ["СДЭК", "Озон"];
 const DELIVERY_QUOTE_DELAY_MS = 800;
 
-function CheckoutForm({ dict }: { dict: Dictionary }) {
+function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo | null }) {
   const t = dict.checkout;
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,7 +34,7 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
     email: "",
     name: "",
     phone: "",
-    service: DELIVERY_SERVICES[0] as DeliveryService,
+    service: DELIVERY_SERVICES[0] as CheckoutService,
     extra: "",
   });
   // Each address field keeps what is shown plus the suggestion it came from (if any): the
@@ -65,8 +66,13 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
       : quote?.status === "on_request"
         ? { weightG: quote.plasticGramsTotal, goodsRub: 0 }
         : null;
+  const isPickup = form.service === PICKUP;
+  // A customer living near the workshop is offered pickup (free) as soon as their address says so.
+  const nearKm = isPickup ? null : pickupDistanceKm(pickup, [house.picked, street.picked, city.picked]);
   const canQuoteDelivery =
-    Boolean(parcel && addressLine) && QUOTED_SERVICES.includes(form.service) && (form.service !== "Озон" || phoneDigits >= 10);
+    Boolean(parcel && addressLine) &&
+    QUOTED_SERVICES.includes(form.service as DeliveryService) &&
+    (form.service !== "Озон" || phoneDigits >= 10);
   const deliveryKey = canQuoteDelivery ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}` : "";
   const pickedPoint = deliveryPoint?.key === deliveryKey ? deliveryPoint.id : undefined;
   const requestKey = `${deliveryKey}|${pickedPoint ?? ""}`;
@@ -205,19 +211,30 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
         <div>
           <label className="block text-sm font-medium text-text">{t.deliveryService}</label>
           <div className="mt-1 flex flex-wrap gap-2">
-            {DELIVERY_SERVICES.map((s) => (
+            {(pickup ? CHECKOUT_SERVICES : DELIVERY_SERVICES).map((s: CheckoutService) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setForm({ ...form, service: s })}
                 className={`pill ${form.service === s ? "active" : ""}`}
               >
-                {s}
+                {s === PICKUP ? t.pickupOption : s}
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-muted">{t.deliveryHint}</p>
+          <p className="mt-1 text-xs text-muted">{isPickup ? t.pickupHint : t.deliveryHint}</p>
         </div>
+
+        {isPickup && pickup && (
+          <div className="card flex flex-col gap-1 p-4 text-sm">
+            <p className="text-text">{formatTemplate(t.pickupAt, pickup.address)}</p>
+            {pickup.hours && <p className="text-muted">{formatTemplate(t.pickupHours, pickup.hours)}</p>}
+            <p className="text-accent">{t.pickupOption} — {t.pickupFree}</p>
+          </div>
+        )}
+
+        {!isPickup && (
+        <>
 
         <AddressField
           label={t.city}
@@ -267,6 +284,20 @@ function CheckoutForm({ dict }: { dict: Dictionary }) {
           value={form.extra}
           onChange={(v) => setForm({ ...form, extra: v })}
         />
+
+        {nearKm !== null && (
+          <div className="card flex flex-wrap items-center justify-between gap-3 border-accent p-4 text-sm">
+            <div>
+              <p className="font-medium text-text">{formatTemplate(t.pickupNearTitle, roundKm(nearKm))}</p>
+              <p className="text-muted">{t.pickupNearText}</p>
+            </div>
+            <button type="button" onClick={() => setForm({ ...form, service: PICKUP })} className="btn btn-primary px-4 py-1.5 text-sm">
+              {t.pickupNearButton}
+            </button>
+          </div>
+        )}
+        </>
+        )}
 
         {isQuotingDelivery && <p className="text-sm text-muted">{t.deliveryCalculating}</p>}
         {!isQuotingDelivery && currentDelivery && !currentDelivery.point && currentDelivery.candidates.length > 0 && (
@@ -359,10 +390,10 @@ function Field({
   );
 }
 
-export function CheckoutClient({ dict }: { dict: Dictionary }) {
+export function CheckoutClient({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo | null }) {
   return (
     <Suspense fallback={null}>
-      <CheckoutForm dict={dict} />
+      <CheckoutForm dict={dict} pickup={pickup} />
     </Suspense>
   );
 }

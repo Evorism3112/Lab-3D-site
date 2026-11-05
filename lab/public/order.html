@@ -1475,6 +1475,7 @@ for (const btnId of ['view-btn', 'view-btn-bottom']) {
   });
 }
 
+let updatePickupAddress = () => {};
 async function load() {
   [statuses, catalog] = await Promise.all([api('/api/statuses'), api('/api/catalog')]);
   renderQuickAdd(document.getElementById('quick-add'), addItemRow);
@@ -1482,6 +1483,7 @@ async function load() {
   for (const s of catalog.delivery_services) {
     deliverySelect.appendChild(el(`<option value="${s.label}">${s.label}</option>`));
   }
+  updatePickupAddress = bindPickupAddress(deliverySelect, document.querySelector('[name="pvz_address"]'));
 
   const order = await api(`/api/orders/${id}`);
   document.getElementById('title').textContent = `Заказ #${order.display_number}`;
@@ -1525,6 +1527,7 @@ function fillForm(order) {
   const form = document.getElementById('order-form');
   form.number.value = order.number || '';
   form.delivery_service.value = order.delivery_service || 'СДЭК';
+  updatePickupAddress();
   form.full_name.value = order.full_name || '';
   form.phone.value = order.phone || '';
   form.pvz_address.value = order.pvz_address || '';

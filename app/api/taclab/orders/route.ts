@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { DELIVERY_SERVICES } from "@/lib/address";
+import { CHECKOUT_SERVICES, PICKUP } from "@/lib/address";
 import { prisma } from "@/lib/db";
 import { pushTaclabOrderToLab, quoteDeliveryFromLab } from "@/lib/labClient";
 import { isRateLimited } from "@/lib/rateLimit";
+import { getPickup } from "@/lib/settings";
 import { getShopCatalog } from "@/lib/taclab/catalog";
 
 const OrderSchema = z.object({
@@ -27,8 +28,9 @@ const OrderSchema = z.object({
     .regex(/^[\d\s+()-]+$/)
     .refine((v) => v.replace(/\D/g, "").length >= 10),
   email: z.string().trim().email().max(200).optional().or(z.literal("")),
-  service: z.enum(DELIVERY_SERVICES),
-  address: z.string().trim().min(5).max(400),
+  service: z.enum(CHECKOUT_SERVICES),
+  // Empty for pickup (the workshop's address is used).
+  address: z.string().trim().max(400),
   deliveryPoint: z.string().trim().max(50).optional(),
   comment: z.string().trim().max(1000).optional(),
 });
@@ -44,6 +46,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Проверьте имя, телефон и адрес." }, { status: 400 });
   }
   const data = parsed.data;
+  // Pickup: the workshop's address, free; only while pickup is switched on.
+  const isPickup = data.service === PICKUP;
+  const pickup = isPickup ? await getPickup() : null;
+  if (isPickup && !pickup) return NextResponse.json({ error: "Самовывоз сейчас недоступен." }, { status: 400 });
+  if (!isPickup && data.address.length < 5) return NextResponse.json({ error: "Укажите адрес доставки." }, { status: 400 });
+  const address = pickup ? pickup.address : data.address;
 
   const { products, crmReachable } = await getShopCatalog({ fresh: true });
   if (!crmReachable) {
@@ -72,7 +80,7 @@ export async function POST(request: NextRequest) {
   const goodsTotalRub = items.reduce((sum, i) => sum + i.priceRub * i.quantity, 0);
 
   // Recalculated here for the point the customer saw it for, like the 3D-print checkout.
-  const delivery = data.deliveryPoint
+  const delivery = !isPickup && data.deliveryPoint
     ? await quoteDeliveryFromLab({
         service: data.service,
         address: data.address,
@@ -89,8 +97,8 @@ export async function POST(request: NextRequest) {
       phone: data.phone,
       email: data.email || null,
       deliveryService: data.service,
-      address: data.address,
-      deliveryPriceRub: delivery?.price ? Math.round(delivery.price.total) : null,
+      address,
+      deliveryPriceRub: isPickup ? 0 : delivery?.price ? Math.round(delivery.price.total) : null,
       goodsTotalRub: Math.round(goodsTotalRub),
       items,
       comment: data.comment || null,

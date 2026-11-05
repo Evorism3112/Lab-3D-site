@@ -342,6 +342,8 @@ export const DELIVERY_SERVICES = [
   { id: 'sdek', label: 'СДЭК', swatch: '#22c55e' },
   { id: 'ozon', label: 'Озон', swatch: '#3b82f6' },
   { id: 'pochta', label: 'Почта России', swatch: '#f97316' },
+  // Забирают у нас в мастерской: адрес ПВЗ не нужен, доставка бесплатна, отправления в ТК не создаётся.
+  { id: 'pickup', label: 'Самовывоз', swatch: '#a855f7' },
   { id: 'other', label: 'Другое', swatch: '#6b7280' },
 ];
 

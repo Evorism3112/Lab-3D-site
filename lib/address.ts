@@ -6,6 +6,12 @@
 export const DELIVERY_SERVICES = ["СДЭК", "Озон", "Почта России"] as const;
 export type DeliveryService = (typeof DELIVERY_SERVICES)[number];
 
+/** Pickup from the workshop (when it is on, lib/settings.ts getPickup) - also as the CRM names it. */
+export const PICKUP = "Самовывоз";
+/** What a checkout can send: a carrier or pickup. */
+export const CHECKOUT_SERVICES = [...DELIVERY_SERVICES, PICKUP] as const;
+export type CheckoutService = (typeof CHECKOUT_SERVICES)[number];
+
 export type AddressParts = {
   /** City with its type when known ("г Казань"), else as typed. */
   city: string;

@@ -1,12 +1,18 @@
 import { ContactsAdmin } from "@/components/ContactsAdmin";
+import { PickupAdmin } from "@/components/PickupAdmin";
 import { getServerLocale } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n/translations";
-import { getContacts } from "@/lib/settings";
+import { getContacts, getSettings } from "@/lib/settings";
 
 export default async function AdminContactsPage() {
   const dict = getDictionary(await getServerLocale());
   const t = dict.admin;
-  const contacts = await getContacts();
+  const [contacts, p] = await Promise.all([
+    getContacts(),
+    // Raw values: the form shows them even while pickup is switched off.
+    getSettings(["pickup.enabled", "pickup.address", "pickup.lat", "pickup.lon", "pickup.hours", "pickup.radiusKm"]),
+  ]);
+  const num = (raw: string) => (raw.trim() && Number.isFinite(Number(raw)) ? Number(raw) : null);
 
   return (
     <div>
@@ -15,9 +21,22 @@ export default async function AdminContactsPage() {
       <div className="mt-6">
         <ContactsAdmin
           dict={dict}
-          phones={contacts.phones.map((p) => p.label)}
+          phones={contacts.phones.map((ph) => ph.label)}
           vkGroup={contacts.vkGroup}
           vkChat={contacts.vkChat}
+        />
+      </div>
+      <div className="mt-5">
+        <PickupAdmin
+          dict={dict}
+          enabled={p["pickup.enabled"] === "1"}
+          pickup={{
+            address: p["pickup.address"],
+            hours: p["pickup.hours"],
+            lat: num(p["pickup.lat"]),
+            lon: num(p["pickup.lon"]),
+            radiusKm: num(p["pickup.radiusKm"]) ?? 30,
+          }}
         />
       </div>
     </div>

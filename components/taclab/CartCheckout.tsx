@@ -6,9 +6,10 @@ import { useEffect, useState } from "react";
 
 import { AddressField } from "@/components/AddressField";
 import { PhotoOrMark } from "@/components/taclab/PhotoOrMark";
-import { DELIVERY_SERVICES, formatAddressLine, type DeliveryService } from "@/lib/address";
+import { CHECKOUT_SERVICES, DELIVERY_SERVICES, formatAddressLine, PICKUP, type CheckoutService, type DeliveryService } from "@/lib/address";
 import type { AddressSuggestion } from "@/lib/addressSuggest";
 import type { DeliveryQuote } from "@/lib/labClient";
+import { pickupDistanceKm, roundKm, type PickupInfo } from "@/lib/pickupNear";
 import { clearCart, setQty, useCart, type CartLine } from "@/lib/taclab/cart";
 import { saveCity, savedCity } from "@/lib/taclab/city";
 import { rub, shopPath } from "@/lib/taclab/format";
@@ -65,12 +66,12 @@ function Field({
   );
 }
 
-export function CartCheckout({ base }: { base: string }) {
+export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInfo | null }) {
   const router = useRouter();
   const cart = useCart();
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [catalogError, setCatalogError] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", service: DELIVERY_SERVICES[0] as DeliveryService, extra: "", comment: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", service: DELIVERY_SERVICES[0] as CheckoutService, extra: "", comment: "" });
   // The city chosen on a product page (price with delivery) comes in filled. The form renders only
   // once the cart is read in the browser, so this initial value never meets server HTML.
   const [city, setCity] = useState<Picked>(() => {
@@ -113,9 +114,15 @@ export function CartCheckout({ base }: { base: string }) {
         })
       : "";
   const phoneDigits = form.phone.replace(/\D/g, "").length;
+  const isPickup = form.service === PICKUP;
+  // A customer living near the workshop is offered pickup (free) as soon as their address says so.
+  const nearKm = isPickup ? null : pickupDistanceKm(pickup, [house.picked, street.picked, city.picked]);
   // Ozon prices a parcel for a recipient phone, so it waits for one.
   const canQuote =
-    lines.length > 0 && Boolean(addressLine) && QUOTED_SERVICES.includes(form.service) && (form.service !== "Озон" || phoneDigits >= 10);
+    lines.length > 0 &&
+    Boolean(addressLine) &&
+    QUOTED_SERVICES.includes(form.service as DeliveryService) &&
+    (form.service !== "Озон" || phoneDigits >= 10);
   const deliveryKey = canQuote ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}|${weightG}|${goodsTotal}` : "";
   const pickedPoint = deliveryPoint?.key === deliveryKey ? deliveryPoint.id : undefined;
   const requestKey = `${deliveryKey}|${pickedPoint ?? ""}`;
@@ -167,8 +174,8 @@ export function CartCheckout({ base }: { base: string }) {
           phone: form.phone,
           email: form.email,
           service: form.service,
-          address: addressLine,
-          deliveryPoint: currentDelivery?.price ? currentDelivery.point?.id : undefined,
+          address: isPickup ? "" : addressLine,
+          deliveryPoint: !isPickup && currentDelivery?.price ? currentDelivery.point?.id : undefined,
           comment: form.comment || undefined,
         }),
       });
@@ -255,7 +262,7 @@ export function CartCheckout({ base }: { base: string }) {
         <fieldset>
           <legend className="text-sm font-medium">Доставка</legend>
           <div className="mt-1 flex flex-wrap gap-2">
-            {DELIVERY_SERVICES.map((s) => (
+            {(pickup ? CHECKOUT_SERVICES : DELIVERY_SERVICES).map((s: CheckoutService) => (
               <button
                 key={s}
                 type="button"
@@ -268,8 +275,21 @@ export function CartCheckout({ base }: { base: string }) {
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-tl-muted">До пункта выдачи: укажите адрес — подберём ближайший.</p>
+          <p className="mt-1 text-xs text-tl-muted">
+            {isPickup ? "Заберите заказ у нас в мастерской — бесплатно." : "До пункта выдачи: укажите адрес — подберём ближайший."}
+          </p>
         </fieldset>
+
+        {isPickup && pickup && (
+          <div className="flex flex-col gap-1 rounded-[2px] border border-tl-accent p-4 text-sm">
+            <span className="tl-mono text-xs tracking-[0.08em] text-tl-accent">САМОВЫВОЗ · БЕСПЛАТНО</span>
+            <span className="text-tl-text">{pickup.address}</span>
+            {pickup.hours && <span className="text-tl-muted">{pickup.hours}</span>}
+          </div>
+        )}
+
+        {!isPickup && (
+        <>
 
         <AddressField
           label="Город"
@@ -312,6 +332,20 @@ export function CartCheckout({ base }: { base: string }) {
           />
         </div>
         <Field label="Квартира, подъезд (необязательно)" required={false} value={form.extra} onChange={(v) => setForm({ ...form, extra: v })} />
+
+        {nearKm !== null && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[2px] border border-tl-accent p-4 text-sm">
+            <div>
+              <p className="font-medium text-tl-text">Вы примерно в {roundKm(nearKm)} км от нас</p>
+              <p className="text-tl-muted">Можно забрать заказ самостоятельно — бесплатно.</p>
+            </div>
+            <button type="button" onClick={() => setForm({ ...form, service: PICKUP })} className="tl-btn tl-btn-primary min-h-11 text-base">
+              Заберу сам
+            </button>
+          </div>
+        )}
+        </>
+        )}
 
         {quoting && <p className="text-sm text-tl-muted">Считаем доставку…</p>}
         {!quoting && currentDelivery && !currentDelivery.point && currentDelivery.candidates.length > 0 && (

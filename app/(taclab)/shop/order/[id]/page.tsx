@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { PICKUP } from "@/lib/address";
 import { prisma } from "@/lib/db";
 import { getShopBase } from "@/lib/taclab/base";
 import { rub, shopPath } from "@/lib/taclab/format";
@@ -41,7 +42,11 @@ export default async function OrderDonePage({ params }: { params: Promise<{ id: 
           <span>
             {order.deliveryService}: {order.address}
           </span>
-          {order.deliveryPriceRub !== null && <span>Доставка ≈ {rub(order.deliveryPriceRub)}</span>}
+          {order.deliveryService === PICKUP ? (
+            <span>Самовывоз — бесплатно. Мы сообщим, когда заказ будет готов.</span>
+          ) : (
+            order.deliveryPriceRub !== null && <span>Доставка ≈ {rub(order.deliveryPriceRub)}</span>
+          )}
         </div>
       </div>
       <Link href={shopPath(base)} className="tl-btn tl-btn-outline self-start">

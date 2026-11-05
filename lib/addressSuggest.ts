@@ -21,6 +21,10 @@ export type AddressSuggestion = {
   /** Photon: the city's box "minLon,minLat,maxLon,maxLat" for street/house lookups. */
   bbox?: string;
   postal?: string;
+  /** Where it is (city centre, street, house), when the lookup knows: lets the checkout offer pickup
+   *  to a customer living near the shop. */
+  lat?: number;
+  lon?: number;
 };
 
 export type AddressContext = { cityId?: string; cityName?: string; bbox?: string; streetId?: string; streetName?: string };
@@ -65,27 +69,36 @@ async function dadata(level: AddressLevel, q: string, ctx: AddressContext): Prom
     body: JSON.stringify(body),
   })) as { suggestions?: DadataSuggestion[] };
 
-  return (json.suggestions ?? []).flatMap(({ data: d }): AddressSuggestion[] => {
-    if (level === "city") {
-      const isSettlement = Boolean(d.settlement);
-      const value = (isSettlement ? d.settlement : d.city) ?? "";
-      if (!value) return [];
-      const fias = isSettlement ? d.settlement_fias_id : d.city_fias_id;
-      return [{
-        value,
-        withType: (isSettlement ? d.settlement_with_type : d.city_with_type) ?? value,
-        hint: [isSettlement ? d.city_with_type : null, d.area_with_type, d.region_with_type].filter(Boolean).join(", "),
-        id: fias ? `${isSettlement ? "settlement" : "city"}:${fias}` : undefined,
-      }];
-    }
-    if (level === "street") {
-      if (!d.street) return [];
-      return [{ value: d.street, withType: d.street_with_type ?? d.street, id: d.street_fias_id ?? undefined }];
-    }
-    if (!d.house) return [];
-    const house = [d.house, d.block_type && d.block ? `${d.block_type} ${d.block}` : null].filter(Boolean).join(" ");
-    return [{ value: house, withType: `${d.house_type ?? "д"} ${house}`, postal: d.postal_code ?? undefined }];
-  });
+  return (json.suggestions ?? []).flatMap(({ data: d }) => withCoords(dadataItems(level, d), d.geo_lat, d.geo_lon));
+}
+
+function withCoords(items: AddressSuggestion[], lat: unknown, lon: unknown): AddressSuggestion[] {
+  const la = Number(lat);
+  const lo = Number(lon);
+  if (lat == null || lon == null || !Number.isFinite(la) || !Number.isFinite(lo)) return items;
+  return items.map((item) => ({ ...item, lat: la, lon: lo }));
+}
+
+function dadataItems(level: AddressLevel, d: Record<string, string | null>): AddressSuggestion[] {
+  if (level === "city") {
+    const isSettlement = Boolean(d.settlement);
+    const value = (isSettlement ? d.settlement : d.city) ?? "";
+    if (!value) return [];
+    const fias = isSettlement ? d.settlement_fias_id : d.city_fias_id;
+    return [{
+      value,
+      withType: (isSettlement ? d.settlement_with_type : d.city_with_type) ?? value,
+      hint: [isSettlement ? d.city_with_type : null, d.area_with_type, d.region_with_type].filter(Boolean).join(", "),
+      id: fias ? `${isSettlement ? "settlement" : "city"}:${fias}` : undefined,
+    }];
+  }
+  if (level === "street") {
+    if (!d.street) return [];
+    return [{ value: d.street, withType: d.street_with_type ?? d.street, id: d.street_fias_id ?? undefined }];
+  }
+  if (!d.house) return [];
+  const house = [d.house, d.block_type && d.block ? `${d.block_type} ${d.block}` : null].filter(Boolean).join(" ");
+  return [{ value: house, withType: `${d.house_type ?? "д"} ${house}`, postal: d.postal_code ?? undefined }];
 }
 
 // --- Photon (OpenStreetMap) -------------------------------------------------------------------
@@ -128,6 +141,8 @@ async function photon(level: AddressLevel, q: string, ctx: AddressContext): Prom
       if (ctx.streetName && str("street") !== ctx.streetName) continue;
       item = { value: str("housenumber"), withType: `д. ${str("housenumber")}`, postal: str("postcode") || undefined };
     }
+    const [itemLon, itemLat] = geometry.coordinates;
+    item = { ...item, lat: itemLat, lon: itemLon };
     const key = `${item.value}|${item.hint ?? ""}`;
     if (!item.value || seen.has(key)) continue;
     seen.add(key);

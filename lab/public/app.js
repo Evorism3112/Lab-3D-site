@@ -421,3 +421,17 @@ function readOrderList() {
     return null;
   }
 }
+
+// «Самовывоз»: адрес ПВЗ не нужен — поле перестаёт быть обязательным. Возвращает функцию, которую
+// стоит вызвать после программной смены способа доставки (заполнение формы заказа).
+function bindPickupAddress(select, addressInput) {
+  const placeholder = addressInput.placeholder;
+  const update = () => {
+    const pickup = /самовывоз/i.test(select.value);
+    addressInput.required = !pickup;
+    addressInput.placeholder = pickup ? 'Самовывоз — адрес не нужен' : placeholder;
+  };
+  select.addEventListener('change', update);
+  update();
+  return update;
+}

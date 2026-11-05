@@ -24,6 +24,18 @@ const SettingsSchema = z
         vkChat: z.string().max(200),
       })
       .optional(),
+    // Pickup from the workshop (lib/settings.ts getPickup).
+    pickup: z
+      .object({
+        enabled: z.boolean(),
+        address: z.string().trim().max(300),
+        lat: z.number().min(-90).max(90).nullable(),
+        lon: z.number().min(-180).max(180).nullable(),
+        hours: z.string().trim().max(300),
+        radiusKm: z.number().min(1).max(1000),
+      })
+      .refine((p) => !p.enabled || p.address.length > 0)
+      .optional(),
     // Shop-wide pricing: rubles per hour and markup %.
     pricing: z
       .object({
@@ -76,6 +88,15 @@ export async function PATCH(request: NextRequest) {
     await setSetting("contacts.phones", phones.join("\n"));
     await setSetting("contacts.vkGroup", vkGroup);
     await setSetting("contacts.vkChat", vkChat);
+  }
+  if (parsed.data.pickup !== undefined) {
+    const p = parsed.data.pickup;
+    await setSetting("pickup.enabled", p.enabled ? "1" : "0");
+    await setSetting("pickup.address", p.address);
+    await setSetting("pickup.lat", p.lat === null ? "" : String(p.lat));
+    await setSetting("pickup.lon", p.lon === null ? "" : String(p.lon));
+    await setSetting("pickup.hours", p.hours);
+    await setSetting("pickup.radiusKm", String(p.radiusKm));
   }
   if (parsed.data.pricing !== undefined) {
     await setSetting("pricing.laborPerHour", String(parsed.data.pricing.laborPerHour));

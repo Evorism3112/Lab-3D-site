@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import { DELIVERY_SERVICES, formatAddressLine } from "@/lib/address";
+import { CHECKOUT_SERVICES, formatAddressLine, PICKUP } from "@/lib/address";
 import { availableCatalog } from "@/lib/colorSync";
 import { prisma } from "@/lib/db";
 import { OrderStatus } from "@/lib/generated/prisma/client";
@@ -10,7 +10,7 @@ import { pushOrderToLab, quoteDeliveryFromLab } from "@/lib/labClient";
 import { PricingError } from "@/lib/pricing/engine";
 import { computeMaterialPrice } from "@/lib/pricing/material";
 import { MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, roughPlasticGrams, scaledVolume } from "@/lib/pricing/options";
-import { getInfillOptions, getShopRates } from "@/lib/settings";
+import { getInfillOptions, getPickup, getShopRates } from "@/lib/settings";
 import { serializeOrder } from "@/lib/serializers";
 import { getSliceResult } from "@/lib/slicing";
 
@@ -38,15 +38,17 @@ const CreateOrderSchema = z.object({
       .trim()
       .regex(/^[\d\s+()-]+$/)
       .refine((v) => v.replace(/\D/g, "").length >= 10),
-    service: z.enum(DELIVERY_SERVICES),
-    city: z.string().trim().min(1).max(200),
-    street: z.string().trim().min(1).max(200),
-    house: z.string().trim().min(1).max(50),
+    service: z.enum(CHECKOUT_SERVICES),
+    // Not needed for pickup; required for a carrier (checked below).
+    city: z.string().trim().max(200).default(""),
+    street: z.string().trim().max(200).default(""),
+    house: z.string().trim().max(50).default(""),
     extra: z.string().trim().max(200).optional(),
     postal: z.string().trim().max(20).optional(),
     // The pickup point the checkout delivery estimate was calculated for (CRM point id).
     deliveryPoint: z.string().trim().max(50).optional(),
-  }),
+  })
+  .refine((s) => s.service === PICKUP || (s.city && s.street && s.house), { path: ["city"] }),
 });
 
 export async function POST(request: NextRequest) {
@@ -140,10 +142,16 @@ export async function POST(request: NextRequest) {
   }
 
   const totalCents = resolvedItems.reduce((sum, i) => sum + i.totalPriceCents, 0);
-  const addressLine = formatAddressLine(shipping);
+  // Pickup: the workshop's address, free; only while pickup is switched on.
+  const isPickup = shipping.service === PICKUP;
+  const pickup = isPickup ? await getPickup() : null;
+  if (isPickup && !pickup) {
+    return NextResponse.json({ error: "Pickup is not available" }, { status: 400 });
+  }
+  const addressLine = pickup ? pickup.address : formatAddressLine(shipping);
 
   // Recalculated here rather than taken from the browser, for the point the customer saw it for.
-  const delivery = shipping.deliveryPoint
+  const delivery = !isPickup && shipping.deliveryPoint
     ? await quoteDeliveryFromLab({
         service: shipping.service,
         address: addressLine,
@@ -164,10 +172,10 @@ export async function POST(request: NextRequest) {
       deliveryService: shipping.service,
       // One line the CRM splits into city / street / house / extra (lib/address.ts).
       shippingAddress: addressLine,
-      shippingCity: shipping.city,
+      shippingCity: isPickup ? null : shipping.city,
       shippingPostal: shipping.postal || null,
       shippingCountry: "Россия",
-      deliveryPriceRub: delivery?.price ? Math.round(delivery.price.total) : null,
+      deliveryPriceRub: isPickup ? 0 : delivery?.price ? Math.round(delivery.price.total) : null,
       totalCents,
       items: { create: resolvedItems },
     },

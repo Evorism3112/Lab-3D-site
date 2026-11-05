@@ -31,6 +31,15 @@ const DEFAULTS = {
   "slicer.filamentPresets": "{}",
   /** Build plate for slicing (lib/slicerPresets.ts BED_TYPES); "" = the process preset's own. */
   "slicer.bedType": "Textured PEI Plate",
+  /** Pickup from the workshop (both sites' checkouts and the CRM's "Самовывоз"): on/off, the address
+   *  shown to customers, its coordinates (to offer pickup to customers living within radiusKm),
+   *  opening hours. */
+  "pickup.enabled": "0",
+  "pickup.address": "",
+  "pickup.lat": "",
+  "pickup.lon": "",
+  "pickup.hours": "",
+  "pickup.radiusKm": "30",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -100,5 +109,23 @@ export const getShopRates = cache(async (): Promise<ShopRates> => {
   return {
     laborPerHourCents: Math.round(num("pricing.laborPerHour") * 100),
     plasticMarkupPercent: num("pricing.plasticMarkupPercent"),
+  };
+});
+
+export type Pickup = { address: string; hours: string; lat: number | null; lon: number | null; radiusKm: number };
+
+/** Pickup from the workshop, or null when it is off (or has no address). */
+export const getPickup = cache(async (): Promise<Pickup | null> => {
+  const v = await getSettings(["pickup.enabled", "pickup.address", "pickup.lat", "pickup.lon", "pickup.hours", "pickup.radiusKm"]).catch(
+    () => null,
+  );
+  if (!v || v["pickup.enabled"] !== "1" || !v["pickup.address"].trim()) return null;
+  const num = (raw: string) => (raw.trim() && Number.isFinite(Number(raw)) ? Number(raw) : null);
+  return {
+    address: v["pickup.address"].trim(),
+    hours: v["pickup.hours"].trim(),
+    lat: num(v["pickup.lat"]),
+    lon: num(v["pickup.lon"]),
+    radiusKm: num(v["pickup.radiusKm"]) ?? 30,
   };
 });

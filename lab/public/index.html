@@ -242,6 +242,7 @@ addItemBtn.addEventListener('click', () => addItemRow());
   for (const s of catalog.delivery_services) {
     deliverySelect.appendChild(el(`<option value="${s.label}">${s.label}</option>`));
   }
+  bindPickupAddress(deliverySelect, document.querySelector('[name="pvz_address"]'));
   addItemRow();
   renderQuickAdd(document.getElementById('quick-add'), addItemRow);
   fillBoxes();

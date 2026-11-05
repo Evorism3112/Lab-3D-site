@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
 
 import { AddressField } from "@/components/AddressField";
+import { addToPrintCart, clearPrintCart, MAX_LINE_QTY, removeFromPrintCart, setPrintCartQty, usePrintCart, type PrintCartLine } from "@/lib/cart";
 import { CHECKOUT_SERVICES, DELIVERY_SERVICES, formatAddressLine, PICKUP, type CheckoutService, type DeliveryService } from "@/lib/address";
 import type { AddressSuggestion } from "@/lib/addressSuggest";
 import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
@@ -15,21 +17,65 @@ import type { QuoteDTO } from "@/lib/types";
 // Carriers the CRM can price (lab quoteDelivery); Russian Post is priced by hand.
 const QUOTED_SERVICES: DeliveryService[] = ["СДЭК", "Озон"];
 const DELIVERY_QUOTE_DELAY_MS = 800;
+const CART_QUOTE_DELAY_MS = 400;
+
+const noopSubscribe = () => () => {};
+/** False during the server render and hydration: the cart is only known in the browser. */
+const useHydrated = () => useSyncExternalStore(noopSubscribe, () => true, () => false);
+
+const lineRequest = (l: PrintCartLine) => ({
+  fileId: l.fileId,
+  materialId: l.materialId,
+  colorId: l.colorId,
+  finishId: l.finishId,
+  quantity: l.quantity,
+  scalePercent: l.scalePercent,
+  infillPercent: l.infillPercent,
+});
 
 function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo | null }) {
   const t = dict.checkout;
   const router = useRouter();
+  const tc = dict.cart;
   const searchParams = useSearchParams();
-  const fileId = searchParams.get("fileId") ?? "";
-  const materialId = searchParams.get("materialId") ?? "";
-  const colorId = searchParams.get("colorId") ?? undefined;
-  const finishId = searchParams.get("finishId") ?? undefined;
-  const quantity = Number(searchParams.get("quantity") ?? 1);
-  const scalePercent = Number(searchParams.get("scale") ?? 100);
-  // Missing (old links) = the default infill level, picked on the server.
-  const infillPercent = searchParams.get("infill") ? Number(searchParams.get("infill")) : undefined;
+  const hydrated = useHydrated();
+  const lines = usePrintCart();
 
-  const [quote, setQuote] = useState<QuoteDTO | null>(null);
+  // Old links (/order/checkout?fileId=…) carried one model: it goes into the cart.
+  const legacyFileId = searchParams.get("fileId");
+  useEffect(() => {
+    const materialId = searchParams.get("materialId");
+    if (!legacyFileId || !materialId) return;
+    addToPrintCart({
+      fileId: legacyFileId,
+      fileName: "",
+      materialId,
+      materialName: "",
+      colorId: searchParams.get("colorId") ?? undefined,
+      finishId: searchParams.get("finishId") ?? undefined,
+      quantity: Math.max(1, Number(searchParams.get("quantity")) || 1),
+      scalePercent: Number(searchParams.get("scale")) || 100,
+      infillPercent: Number(searchParams.get("infill")) || 0,
+    });
+    router.replace("/order/checkout");
+  }, [legacyFileId, searchParams, router]);
+
+  // Each line's price from the slicer, keyed by what was asked so a changed line is asked again.
+  const [quotes, setQuotes] = useState<Record<string, { key: string; quote: QuoteDTO | null }>>({});
+  const linesKey = JSON.stringify(lines.map((l) => [l.id, lineRequest(l)]));
+  const lineQuote = (l: PrintCartLine) => {
+    const q = quotes[l.id];
+    return q && q.key === JSON.stringify(lineRequest(l)) ? q.quote : null;
+  };
+  const lineQuotes = lines.map(lineQuote);
+  const anySlicing = lineQuotes.some((q) => !q || q.status === "slicing");
+  const readyTotalCents = lineQuotes.reduce((sum, q) => sum + (q?.status === "ready" ? q.totalPriceCents : 0), 0);
+  const anyOnRequest = lineQuotes.some((q) => q?.status === "on_request");
+  const allOnRequest = lines.length > 0 && lineQuotes.every((q) => q?.status === "on_request");
+  const gramsTotal = lineQuotes.reduce(
+    (sum, q) => sum + (q && (q.status === "ready" || q.status === "on_request") ? q.plasticGramsTotal : 0),
+    0,
+  );
   const [form, setForm] = useState({
     email: "",
     name: "",
@@ -60,12 +106,7 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
   const phoneDigits = form.phone.replace(/\D/g, "").length;
   // Ozon prices a parcel for a recipient phone, so it waits for one.
   // The parcel weight (and declared value) for the delivery estimate; none while the slicer works.
-  const parcel =
-    quote?.status === "ready"
-      ? { weightG: quote.plasticGramsTotal, goodsRub: quote.totalPriceCents / 100 }
-      : quote?.status === "on_request"
-        ? { weightG: quote.plasticGramsTotal, goodsRub: 0 }
-        : null;
+  const parcel = lines.length > 0 && !anySlicing ? { weightG: gramsTotal, goodsRub: readyTotalCents / 100 } : null;
   const isPickup = form.service === PICKUP;
   // A customer living near the workshop is offered pickup (free) as soon as their address says so.
   const nearKm = isPickup ? null : pickupDistanceKm(pickup, [house.picked, street.picked, city.picked]);
@@ -106,30 +147,53 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
       clearTimeout(timer);
       controller.abort();
     };
-    // requestKey covers the service, address, phone and point.
+    // requestKey covers the service, address, phone and point; parcel follows the cart's quotes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestKey, quote]);
+  }, [requestKey, parcel?.weightG, parcel?.goodsRub]);
 
-  // Asked again while the slicer works on the exact price, so the order goes out at the price shown.
+  // Asked again while the slicer works on an exact price, so the order goes out at the price shown.
   const [pollTick, setPollTick] = useState(0);
+  const slicingNow = lineQuotes.some((q) => q?.status === "slicing");
   useEffect(() => {
-    if (quote?.status !== "slicing") return;
+    if (!slicingNow) return;
     const timeout = setTimeout(() => setPollTick((n) => n + 1), 3000);
     return () => clearTimeout(timeout);
-  }, [quote, pollTick]);
+  }, [slicingNow, pollTick]);
 
   useEffect(() => {
-    if (!fileId || !materialId) return;
-    fetch("/api/quote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileId, materialId, colorId, finishId, quantity, scalePercent, infillPercent }),
-    })
-      .then((res) => res.json())
-      // An unchanged quote keeps its object, so polling doesn't re-run the delivery estimate.
-      .then((data) => setQuote((prev) => (JSON.stringify(prev) === JSON.stringify(data.quote) ? prev : data.quote)))
-      .catch(() => setError("Failed to load quote"));
-  }, [fileId, materialId, colorId, finishId, quantity, scalePercent, infillPercent, pollTick]);
+    if (lines.length === 0) return;
+    const controller = new AbortController();
+    // A short pause so clicking +/− several times asks once.
+    const timer = setTimeout(() => {
+      for (const line of lines) {
+        const key = JSON.stringify(lineRequest(line));
+        fetch("/api/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          // 0 infill = an old link without one: the server's default level.
+          body: JSON.stringify({ ...lineRequest(line), infillPercent: line.infillPercent || undefined }),
+        })
+          .then((res) => res.json())
+          .then((data) =>
+            setQuotes((prev) => {
+              // An unchanged quote keeps its object, so polling doesn't re-run the delivery estimate.
+              if (prev[line.id]?.key === key && JSON.stringify(prev[line.id].quote) === JSON.stringify(data.quote ?? null)) return prev;
+              return { ...prev, [line.id]: { key, quote: data.quote ?? { status: "on_request", leadTimeDays: 0, plasticGramsTotal: 0 } } };
+            }),
+          )
+          .catch(() => {
+            if (!controller.signal.aborted) setError(t.quoteFailed);
+          });
+      }
+    }, CART_QUOTE_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // linesKey covers every line's settings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linesKey, pollTick]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,7 +205,7 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: [{ fileId, materialId, colorId, finishId, quantity, scalePercent, infillPercent }],
+          items: lines.map((l) => ({ ...lineRequest(l), infillPercent: l.infillPercent || undefined })),
           email: form.email,
           shipping: {
             name: form.name,
@@ -165,6 +229,7 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
       }
 
       // Payment is disabled for now — the order is pushed to lab on creation and handled from there.
+      clearPrintCart();
       router.push(`/order/thank-you?orderId=${orderData.order.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -172,31 +237,115 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
     }
   };
 
+  if (!hydrated || legacyFileId) return null;
+
+  if (lines.length === 0) {
+    return (
+      <div className="mx-auto max-w-xl px-6 py-24 text-center">
+        <h1 className="text-2xl font-semibold text-text">{tc.title}</h1>
+        <p className="mt-4 text-muted">{tc.empty}</p>
+        <Link href="/order/upload" className="btn btn-primary mt-8">
+          {tc.emptyCta}
+        </Link>
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-xl px-6 py-16">
-      <h1 className="text-2xl font-bold text-text">{t.title}</h1>
+    <div className="mx-auto max-w-2xl px-6 py-16">
+      <h1 className="text-2xl font-semibold text-text">{tc.title}</h1>
+
+      <ul className="mt-6 flex flex-col gap-3">
+        {lines.map((line, i) => {
+          const q = lineQuotes[i];
+          const details = [
+            line.materialName,
+            line.colorName,
+            line.finishName,
+            line.infillPercent ? formatTemplate(tc.infill, `${line.infillPercent}%`) : null,
+            line.scalePercent !== 100 ? formatTemplate(tc.scale, `${line.scalePercent}%`) : null,
+          ].filter(Boolean);
+          return (
+            <li key={line.id} className="card flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
+              {line.colorHex && (
+                <span aria-hidden className="h-8 w-8 shrink-0 rounded-full border border-border" style={{ background: line.colorHex }} />
+              )}
+              <div className="min-w-0 flex-1 basis-56">
+                <Link href={`/order/configure/${line.fileId}`} className="block truncate font-medium text-text hover:text-accent">
+                  {line.fileName || line.fileId}
+                </Link>
+                <p className="mt-0.5 text-xs text-muted">{details.join(" · ")}</p>
+              </div>
+              <div className="flex items-center rounded-lg border border-border">
+                <button
+                  type="button"
+                  aria-label={tc.less}
+                  onClick={() => setPrintCartQty(line.id, line.quantity - 1)}
+                  disabled={line.quantity <= 1}
+                  className="h-9 w-9 text-lg text-text disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="min-w-8 text-center font-mono text-sm text-text">{line.quantity}</span>
+                <button
+                  type="button"
+                  aria-label={tc.more}
+                  onClick={() => setPrintCartQty(line.id, line.quantity + 1)}
+                  disabled={line.quantity >= MAX_LINE_QTY}
+                  className="h-9 w-9 text-lg text-text disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+              <div className="w-32 text-right">
+                {!q || q.status === "slicing" ? (
+                  <span className="text-sm text-muted">…</span>
+                ) : q.status === "ready" ? (
+                  <>
+                    <span className="block font-semibold text-text">≈ {formatCents(q.totalPriceCents, dict.locale)}</span>
+                    {line.quantity > 1 && (
+                      <span className="block text-xs text-muted">{formatTemplate(tc.perUnit, formatCents(q.unitPriceCents, dict.locale))}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-sm text-muted">{dict.configure.priceOnRequest}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => removeFromPrintCart(line.id)}
+                className="text-xs text-muted transition-colors hover:text-danger"
+              >
+                {tc.remove}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <Link href="/order/upload" className="mt-3 inline-block text-sm font-medium text-accent hover:underline">
+        + {tc.addAnother}
+      </Link>
 
       <div className="card mt-6 p-4">
         <div className="flex items-baseline justify-between">
-          <span className="text-sm text-muted">{t.orderTotal}</span>
-          <span className="text-xl font-bold text-text">
-            {quote?.status === "ready"
-              ? `≈ ${formatCents(quote.totalPriceCents, dict.locale)}`
-              : quote?.status === "on_request"
-                ? dict.configure.priceOnRequest
-                : "…"}
+          <span className="text-sm text-muted">{tc.itemsTotal}</span>
+          <span className="text-xl font-semibold text-text">
+            {anySlicing ? "…" : allOnRequest ? dict.configure.priceOnRequest : `≈ ${formatCents(readyTotalCents, dict.locale)}`}
           </span>
         </div>
         <p className="mt-2 text-xs text-muted">
-          {quote?.status === "ready"
-            ? dict.configure.estimateNote
-            : quote?.status === "on_request"
+          {anySlicing
+            ? dict.configure.slicingNote
+            : allOnRequest
               ? dict.configure.priceOnRequestNote
-              : dict.configure.slicingNote}
+              : anyOnRequest
+                ? tc.partlyOnRequest
+                : dict.configure.estimateNote}
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+      <h2 className="mt-10 text-xl font-semibold text-text">{t.title}</h2>
+      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <Field label={t.email} type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
         <Field label={t.fullName} value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
         <Field
@@ -335,11 +484,11 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
               <span className="text-text">≈ {formatAmount(currentDelivery.price.total, dict.locale)}</span>
             </div>
             {/* No total when the print price is still to be agreed. */}
-            {quote?.status === "ready" && (
+            {!anyOnRequest && (
               <div className="flex items-baseline justify-between">
                 <span className="text-muted">{t.deliveryTotal}</span>
                 <span className="font-bold text-text">
-                  ≈ {formatAmount(quote.totalPriceCents / 100 + currentDelivery.price.total, dict.locale)}
+                  ≈ {formatAmount(readyTotalCents / 100 + currentDelivery.price.total, dict.locale)}
                 </span>
               </div>
             )}
@@ -349,7 +498,7 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
-        <button type="submit" disabled={isSubmitting || !quote || quote.status === "slicing"} className="btn btn-primary w-full">
+        <button type="submit" disabled={isSubmitting || anySlicing} className="btn btn-primary w-full">
           {isSubmitting ? t.redirecting : t.payNow}
         </button>
       </form>

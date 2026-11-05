@@ -1,9 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { ModelViewer } from "@/components/ModelViewer";
+import { addToPrintCart } from "@/lib/cart";
 import { formatDays, formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import { formatAmount, formatCents } from "@/lib/money";
 import { isSmoothFinish, plasticLook } from "@/lib/plasticLook";
@@ -33,7 +34,6 @@ export function ConfigureClient({
   dict: Dictionary;
 }) {
   const t = dict.configure;
-  const router = useRouter();
   const [materialId, setMaterialId] = useState(materials[0]?.id ?? "");
   const material = useMemo(
     () => materials.find((m) => m.id === materialId) ?? materials[0],
@@ -52,6 +52,8 @@ export function ConfigureClient({
   const [isQuoting, setIsQuoting] = useState(false);
   // Bumped to ask for the quote again while the slicer works on the exact price.
   const [pollTick, setPollTick] = useState(0);
+  // The setup last put in the cart: any change afterwards offers "add" again.
+  const [addedKey, setAddedKey] = useState<string | null>(null);
 
   const colorId = resolveSelection(selectedColorId, material?.colors ?? []);
   const colorGroups = useMemo(() => {
@@ -107,17 +109,26 @@ export function ConfigureClient({
     return <p className="mx-auto max-w-2xl px-6 py-24 text-muted">{t.noMaterials}</p>;
   }
 
-  const handleContinue = () => {
-    const params = new URLSearchParams({
+  const setupKey = [material.id, colorId, finishId, quantity, scale, infill].join("|");
+  const added = addedKey === setupKey;
+  const handleAddToCart = () => {
+    const color = material.colors.find((c) => c.id === colorId);
+    const finish = material.finishes.find((f) => f.id === finishId);
+    addToPrintCart({
       fileId: file.id,
+      fileName: file.originalName,
       materialId: material.id,
-      quantity: String(quantity),
-      scale: String(scale),
-      infill: String(infill),
+      materialName: material.name,
+      colorId: color?.id,
+      colorName: color?.name,
+      colorHex: color?.hex,
+      finishId: finish?.id,
+      finishName: finish?.name,
+      infillPercent: infill,
+      scalePercent: scale,
+      quantity,
     });
-    if (colorId) params.set("colorId", colorId);
-    if (finishId) params.set("finishId", finishId);
-    router.push(`/order/checkout?${params.toString()}`);
+    setAddedKey(setupKey);
   };
 
   const size = (mm: number | undefined) => (mm === undefined ? "—" : ((mm * scale) / 100).toFixed(1));
@@ -357,15 +368,29 @@ export function ConfigureClient({
             </>
           )}
 
-          <button
-            type="button"
-            // Orders wait for the slicer: an order placed meanwhile would go out without a price.
-            disabled={!quote || quote.status === "slicing" || isQuoting}
-            onClick={handleContinue}
-            className="btn btn-primary mt-4 w-full"
-          >
-            {t.continueToCheckout}
-          </button>
+          {added ? (
+            <div className="mt-4 flex flex-col gap-2" role="status">
+              <p className="text-sm font-medium text-accent">✓ {dict.cart.added}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Link href="/order/checkout" className="btn btn-primary">
+                  {dict.cart.goToCart} →
+                </Link>
+                <Link href="/order/upload" className="btn btn-outline">
+                  {dict.cart.addAnother}
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              // Wait for the slicer: the cart should hold what was priced.
+              disabled={!quote || quote.status === "slicing" || isQuoting}
+              onClick={handleAddToCart}
+              className="btn btn-primary mt-4 w-full"
+            >
+              {dict.cart.addToCart}
+            </button>
+          )}
         </div>
         </div>
         </div>

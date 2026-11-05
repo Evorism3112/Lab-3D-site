@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { CartLink } from "@/components/CartLink";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { MobileMenu } from "@/components/MobileMenu";
 import { NavLink } from "@/components/NavLink";
@@ -43,18 +44,23 @@ export async function Header() {
           <Image src="/logo.svg" alt="" width={28} height={24} className="h-5 w-auto sm:h-6" />
           {BRAND_NAME}
         </Link>
+        <div className="flex items-center gap-x-5">
         <nav className="hidden items-center gap-x-5 text-sm text-muted md:flex">
           {links}
           <span className="hidden lg:inline">{phone}</span>
           {quote}
           <LanguageSwitcher locale={locale} />
         </nav>
-        <MobileMenu label={dict.header.menu}>
-          {links}
-          {phone}
-          {quote}
-          <LanguageSwitcher locale={locale} />
-        </MobileMenu>
+        <div className="flex items-center gap-2">
+          <CartLink label={dict.cart.title} />
+          <MobileMenu label={dict.header.menu}>
+            {links}
+            {phone}
+            {quote}
+            <LanguageSwitcher locale={locale} />
+          </MobileMenu>
+        </div>
+        </div>
       </div>
     </header>
   );

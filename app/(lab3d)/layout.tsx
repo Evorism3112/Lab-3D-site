@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { JetBrains_Mono, Onest, Unbounded } from "next/font/google";
 import { Suspense } from "react";
 
 import { FloatingChat } from "@/components/FloatingChat";
@@ -14,11 +14,10 @@ import { getContacts } from "@/lib/settings";
 
 import "../globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+// Unbounded for headings, Onest for text, JetBrains Mono for small labels — all three have Cyrillic.
+const display = Unbounded({ variable: "--font-unbounded", subsets: ["latin", "cyrillic"], weight: ["500", "600", "700"] });
+const sans = Onest({ variable: "--font-onest", subsets: ["latin", "cyrillic"], weight: ["400", "500", "600", "700"] });
+const mono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin", "cyrillic"], weight: ["400", "500"] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const { meta } = getDictionary(await getServerLocale());
@@ -32,7 +31,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const locale = await getServerLocale();
   const contacts = await getContacts();
   return (
-    <html lang={locale} className={`${inter.variable} h-full antialiased`}>
+    <html lang={locale} className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
         <Providers>
           <Header />

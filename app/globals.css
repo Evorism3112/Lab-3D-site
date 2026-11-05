@@ -3,18 +3,20 @@
 :root {
   color-scheme: dark;
   accent-color: var(--accent);
-  --bg: #0a0a0a;
-  --bg-soft: #131313;
-  --text: #eaeaea;
-  --muted: #9a9a9a;
-  --accent: #7fbf7f;
-  --accent-soft: rgba(127, 191, 127, 0.12);
-  --border: rgba(255, 255, 255, 0.1);
-  --card: #121212;
+  /* "Workshop" dark theme: green-black background, bright green accent (differs from TACLAB's neutral black + coyote). */
+  --bg: #0d1410;
+  --bg-soft: #111a14;
+  --text: #eef4ef;
+  --muted: #a4b1a7;
+  --accent: #6fdc8c;
+  --accent-rgb: 111, 220, 140;
+  --accent-soft: rgba(111, 220, 140, 0.12);
+  --border: rgba(160, 230, 175, 0.14);
+  --card: #15201a;
   --danger: #ef8080;
 
   --container: 1120px;
-  --radius: 16px;
+  --radius: 20px;
 }
 
 @theme inline {
@@ -27,7 +29,9 @@
   --color-accent-soft: var(--accent-soft);
   --color-border: var(--border);
   --color-danger: var(--danger);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-onest);
+  --font-display: var(--font-unbounded);
+  --font-mono: var(--font-jetbrains);
 }
 
 /* Base element resets live in Tailwind's own cascade layer so utility
@@ -41,7 +45,7 @@
 
   html {
     scroll-behavior: smooth;
-    scrollbar-color: var(--accent) #151515;
+    scrollbar-color: var(--accent) #111a14;
     scrollbar-width: thin;
   }
 
@@ -49,8 +53,15 @@
     margin: 0;
     color: var(--text);
     line-height: 1.5;
-    background: linear-gradient(180deg, #050505 0%, #0a0a0a 30%, #111117 60%, #171717 100%);
+    background: radial-gradient(1200px 600px at 75% -10%, rgba(var(--accent-rgb), 0.10), transparent 60%), var(--bg);
     background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display), var(--font-sans), sans-serif;
+    letter-spacing: -0.02em;
   }
 
   img {
@@ -67,13 +78,13 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #101010;
+    background: #111a14;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(127, 191, 127, 0.5);
+    background: rgba(var(--accent-rgb), 0.5);
     border-radius: 999px;
-    border: 2px solid #101010;
+    border: 2px solid #111a14;
   }
 
   ::-webkit-scrollbar-thumb:hover {
@@ -120,7 +131,7 @@
   }
 
   select:hover {
-    border-color: rgba(127, 191, 127, 0.4);
+    border-color: rgba(var(--accent-rgb), 0.4);
   }
 
   select option {
@@ -132,14 +143,14 @@
 @layer components {
   .tag {
     display: inline-block;
-    font-size: 13px;
-    letter-spacing: 0.04em;
+    font-family: var(--font-mono), monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--accent);
     background: var(--accent-soft);
-    border: 1px solid rgba(127, 191, 127, 0.25);
-    padding: 6px 14px;
-    border-radius: 999px;
+    padding: 6px 10px;
+    border-radius: 8px;
   }
 
   .card {
@@ -154,8 +165,8 @@
     justify-content: center;
     gap: 8px;
     padding: 12px 24px;
-    border-radius: 10px;
-    font-weight: 500;
+    border-radius: 12px;
+    font-weight: 600;
     font-size: 15px;
     transition: 0.25s;
     border: 1px solid transparent;
@@ -169,11 +180,11 @@
 
   .btn-primary {
     background: var(--accent);
-    color: #06110a;
+    color: #0b120d;
   }
 
   .btn-primary:hover:not(:disabled) {
-    box-shadow: 0 0 28px rgba(127, 191, 127, 0.4);
+    box-shadow: 0 0 28px rgba(var(--accent-rgb), 0.4);
     transform: translateY(-1px);
   }
 
@@ -213,7 +224,7 @@
     max-width: var(--container);
     margin: 0 auto;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(127, 191, 127, 0.3), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.3), transparent);
   }
 
   .reveal {
@@ -259,5 +270,12 @@
 
   .badge-dot {
     animation: badge-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+/* The home page's fixed "get a quote" bar on phones: lift the chat button above it. */
+@media (max-width: 767px) {
+  body:has(.mobile-cta) .floating-chat {
+    bottom: 88px;
   }
 }

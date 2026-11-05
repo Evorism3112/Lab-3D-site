@@ -14,7 +14,7 @@ export function FloatingChat({ href, label }: { href: string; label: string }) {
       target="_blank"
       rel="noopener noreferrer"
       aria-label={label}
-      className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-sm font-medium text-text shadow-lg transition-colors hover:border-accent hover:text-accent"
+      className="floating-chat fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-sm font-medium text-text shadow-lg transition-colors hover:border-accent hover:text-accent"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-current">
         <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />

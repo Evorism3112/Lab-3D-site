@@ -12,13 +12,19 @@ export async function Footer() {
   const t = dict.footer;
   const contacts = await getContacts();
   const link = "transition-colors hover:text-accent";
+  // The shop lives in the same app; on its own domain when one is set (proxy.ts), else under /shop.
+  const shopDomain = (process.env.TACLAB_DOMAIN ?? "").split(",")[0].trim();
+  const shopHref = shopDomain ? `https://${shopDomain}` : "/shop";
 
   return (
     <footer className="border-t border-border bg-bg">
-      <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-10 px-6 py-12 text-sm text-muted sm:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-6 py-12 text-sm text-muted sm:grid-cols-[1.4fr_1fr_1fr]">
         <div>
-          <p className="text-base font-bold text-text">{BRAND_NAME}</p>
+          <p className="font-display text-base font-semibold text-text">{BRAND_NAME}</p>
           <p className="mt-2 max-w-[320px]">{t.tagline}</p>
+          <a href={shopHref} className="mt-4 inline-block font-semibold text-accent hover:underline">
+            {t.taclab} →
+          </a>
         </div>
 
         <div>

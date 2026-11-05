@@ -34,11 +34,11 @@ export async function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-[rgba(10,10,10,0.7)] backdrop-blur-md">
-      <div className="relative mx-auto flex max-w-[1120px] items-center justify-between gap-x-6 px-6 py-3">
+    <header className="sticky top-0 z-50 border-b border-border bg-[rgba(13,20,16,0.75)] backdrop-blur-md">
+      <div className="relative mx-auto flex max-w-[1200px] items-center justify-between gap-x-6 px-6 py-3.5">
         <Link
           href="/"
-          className="flex shrink-0 items-center gap-2 whitespace-nowrap text-base font-bold tracking-tight text-text sm:text-lg"
+          className="flex shrink-0 items-center gap-2.5 whitespace-nowrap font-display text-[15px] font-semibold tracking-tight text-text sm:text-base"
         >
           <Image src="/logo.svg" alt="" width={28} height={24} className="h-5 w-auto sm:h-6" />
           {BRAND_NAME}

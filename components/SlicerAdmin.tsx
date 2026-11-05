@@ -312,6 +312,13 @@ function SliceLog({ dict }: { dict: Dictionary }) {
                   {e.slicer ? formatTemplate(t.slicerLogBy, e.slicer) : t.slicerLogByUnknown}
                 </div>
               )}
+              {/* Exactly what was sent: repeat it in Bambuddy to compare. Auto-arrange is on, orientation is the file's. */}
+              <div className="mt-1 break-words text-xs text-muted">
+                {formatTemplate(
+                  t.slicerLogSettings,
+                  [e.settings.printer, e.settings.process, e.settings.filament, e.settings.bedType || t.slicerLogBedFromPreset, `${e.settings.infillPercent}%`].join(" · "),
+                )}
+              </div>
               {e.status === "failed" && e.error && <div className="mt-1 break-words text-xs text-danger">{e.error}</div>}
             </li>
           ))}

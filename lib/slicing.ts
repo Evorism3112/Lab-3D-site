@@ -93,6 +93,8 @@ export type SliceLogEntry = {
   grams: number | null;
   /** The program named in the sliced file, e.g. "OrcaSlicer-2.4.2"; null when it doesn't say. */
   slicer: string | null;
+  /** Exactly what was sent, so the same slice can be repeated in Bambuddy by hand. */
+  settings: { printer: string; process: string; filament: string; bedType: string; infillPercent: number };
   error: string | null;
 };
 
@@ -113,7 +115,7 @@ const state: SlicingState = ((globalThis as { __slicing?: SlicingState }).__slic
 state.log ??= [];
 const log = state.log;
 
-function addLogEntry(entry: Pick<SliceLogEntry, "kind" | "model" | "material">): SliceLogEntry {
+function addLogEntry(entry: Pick<SliceLogEntry, "kind" | "model" | "material" | "settings">): SliceLogEntry {
   const full: SliceLogEntry = {
     ...entry,
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -144,12 +146,20 @@ export async function getSlicerPresets(refresh = false): Promise<SlicerPresets> 
   return value;
 }
 
-async function filamentFor(config: SliceConfig, material: { id: string; slug: string }): Promise<PresetRef | null> {
+async function filamentFor(config: SliceConfig, material: { id: string; slug: string }): Promise<NamedPresetRef | null> {
   const chosen = config.filaments[material.id];
-  if (chosen) return { source: chosen.source, id: chosen.id };
+  if (chosen) return chosen;
   const picked = pickFilamentPreset((await getSlicerPresets()).filament, material.slug, config.printer, config.process);
-  return picked ? { source: picked.source, id: picked.id } : null;
+  return picked ? { source: picked.source, id: picked.id, name: picked.name } : null;
 }
+
+const logSettings = (config: SliceConfig, filament: NamedPresetRef, infillPercent: number): SliceLogEntry["settings"] => ({
+  printer: config.printer.name,
+  process: config.process.name,
+  filament: filament.name,
+  bedType: config.bedType,
+  infillPercent,
+});
 
 type Job = {
   id: string;
@@ -198,7 +208,7 @@ export async function getSliceResult(
   const config = await getSliceConfig();
   if (!config) return { status: "unavailable" };
 
-  let filament: PresetRef | null;
+  let filament: NamedPresetRef | null;
   try {
     filament = await filamentFor(config, material);
   } catch {
@@ -208,7 +218,7 @@ export async function getSliceResult(
   if (!filament) return { status: "unavailable" };
 
   const ref = ({ source, id }: PresetRef): PresetRef => ({ source, id });
-  const options: SliceOptions = { printer: ref(config.printer), process: ref(config.process), filament, infillPercent, bedType: config.bedType };
+  const options: SliceOptions = { printer: ref(config.printer), process: ref(config.process), filament: ref(filament), infillPercent, bedType: config.bedType };
   const key = sliceKey(options, scalePercent);
   const id = `${file.id}|${key}`;
 
@@ -232,6 +242,7 @@ export async function getSliceResult(
       kind: "quote",
       model: `${file.originalName ?? file.id}${scalePercent !== 100 ? ` (${scalePercent}%)` : ""}, ${infillPercent}%`,
       material: material.name ?? material.slug,
+      settings: logSettings(config, filament, infillPercent),
     });
     state.queue.set(id, { id, fileId: file.id, key, storageKey: file.storageKey, format: file.format, scalePercent, options, askedAt: Date.now(), entry });
     void pump();
@@ -325,21 +336,23 @@ export async function startTestSlice(): Promise<string | null> {
   const config = await getSliceConfig();
   if (!config) return "no_presets";
   let options: SliceOptions | null = null;
+  let settings: SliceLogEntry["settings"] | null = null;
   let materialName = "";
   try {
     for (const material of await prisma.material.findMany({ where: { active: true }, orderBy: { name: "asc" } })) {
       const filament = await filamentFor(config, material);
       if (!filament) continue;
       const ref = ({ source, id }: PresetRef): PresetRef => ({ source, id });
-      options = { printer: ref(config.printer), process: ref(config.process), filament, infillPercent: TEST_INFILL_PERCENT, bedType: config.bedType };
+      options = { printer: ref(config.printer), process: ref(config.process), filament: ref(filament), infillPercent: TEST_INFILL_PERCENT, bedType: config.bedType };
+      settings = logSettings(config, filament, TEST_INFILL_PERCENT);
       materialName = material.name;
       break;
     }
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
-  if (!options) return "no_material";
-  const entry = addLogEntry({ kind: "test", model: `Test cube 20 mm, ${TEST_INFILL_PERCENT}%`, material: materialName });
+  if (!options || !settings) return "no_material";
+  const entry = addLogEntry({ kind: "test", model: `Test cube 20 mm, ${TEST_INFILL_PERCENT}%`, material: materialName, settings });
   const id = `test|${entry.id}`;
   state.queue.set(id, {
     id,

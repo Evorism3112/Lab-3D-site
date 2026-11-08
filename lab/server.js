@@ -2282,4 +2282,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Order automation site running at http://localhost:${PORT}`);
   scheduleTracking();
+  ozon.warmDeliveryPoints();
 });

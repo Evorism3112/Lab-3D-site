@@ -309,6 +309,7 @@ export function postingSearch(filters, pagination) {
 // под несколькими возможными именами.
 const POINTS_TTL_MS = 12 * 60 * 60 * 1000;
 let pointsCache = { points: null, loadedAt: 0, loading: null };
+const REFRESH_RETRY_MS = 10 * 60 * 1000;
 
 function pickArray(obj, keys) {
   for (const k of keys) if (Array.isArray(obj?.[k])) return obj[k];
@@ -409,22 +410,18 @@ function prepare(points, loadedAt) {
 function readPointsFile() {
   try {
     const saved = JSON.parse(fs.readFileSync(POINTS_FILE, 'utf8'));
-    if (Array.isArray(saved.points) && Date.now() - saved.loadedAt < POINTS_TTL_MS) return saved;
+    // Устаревший тоже годится: getAllDeliveryPoints отдаст его и обновит список в фоне.
+    if (Array.isArray(saved.points) && saved.points.length) return saved;
   } catch {
     // файла нет или он повреждён — загрузим заново
   }
   return null;
 }
 
-async function getAllDeliveryPoints() {
-  if (pointsCache.points && Date.now() - pointsCache.loadedAt < POINTS_TTL_MS) return pointsCache.points;
-  if (!pointsCache.points) {
-    const saved = readPointsFile();
-    if (saved) {
-      pointsCache = prepare(saved.points, saved.loadedAt);
-      return pointsCache.points;
-    }
-  }
+// Полная загрузка списка — сотни запросов к Ozon, дольше, чем сайт ждёт расчёта доставки.
+// Поэтому устаревший список (в памяти или в файле) отдаём сразу, а свежий качаем в фоне;
+// ждать приходится только самый первый раз, когда списка нет вовсе.
+function refreshDeliveryPoints() {
   if (!pointsCache.loading) {
     pointsCache.loading = (async () => {
       const points = await fillAddresses(await loadAllPointIdsAndData());
@@ -438,10 +435,33 @@ async function getAllDeliveryPoints() {
       return pointsCache.points;
     })().catch((err) => {
       pointsCache.loading = null;
+      pointsCache.failedAt = Date.now();
       throw err;
     });
   }
   return pointsCache.loading;
+}
+
+async function getAllDeliveryPoints() {
+  if (!pointsCache.points) {
+    const saved = readPointsFile();
+    if (saved) pointsCache = prepare(saved.points, saved.loadedAt);
+  }
+  if (pointsCache.points && Date.now() - pointsCache.loadedAt < POINTS_TTL_MS) return pointsCache.points;
+  // После неудачного обновления не дёргаем Ozon заново с каждым расчётом — пауза.
+  if (pointsCache.points && Date.now() - (pointsCache.failedAt || 0) < REFRESH_RETRY_MS) return pointsCache.points;
+  const loading = refreshDeliveryPoints();
+  if (pointsCache.points) {
+    loading.catch((err) => console.error('Ozon: не удалось обновить список ПВЗ:', err.message));
+    return pointsCache.points;
+  }
+  return loading;
+}
+
+// При старте сервера: список ПВЗ готов к первому расчёту на сайте (если Ozon настроен).
+export function warmDeliveryPoints() {
+  if (!getSetting('ozon_client_id') || !getSetting('ozon_client_secret')) return;
+  getAllDeliveryPoints().catch((err) => console.error('Ozon: не удалось загрузить список ПВЗ:', err.message));
 }
 
 // Ближайший пункт дальше этого — координаты, скорее всего, не того города: ищем по адресу.

@@ -5,7 +5,7 @@ import { PhotoOrMark } from "@/components/taclab/PhotoOrMark";
 import { ProductCard } from "@/components/taclab/ProductCard";
 import { getShopBase } from "@/lib/taclab/base";
 import { getShopCatalog } from "@/lib/taclab/catalog";
-import { shopPath } from "@/lib/taclab/format";
+import { lab3dPath, shopPath } from "@/lib/taclab/format";
 
 const FEATURES = [
   { title: "Серийный номер", text: "На каждом изделии — по нему гарантия и история ревизий." },
@@ -16,7 +16,7 @@ const FEATURES = [
 
 const STEPS = [
   { title: "Проектирование", text: "Модель, прототипы, испытания. Каждая доработка — новая ревизия: R01, R02, R03…" },
-  { title: "Печать и сборка", text: "Печатаем на собственной ферме принтеров и собираем вручную." },
+  { title: "Печать и сборка", text: "Печатаем на собственной ферме принтеров Лаборатории 3Д и собираем вручную." },
   { title: "Проверка и S/N", text: "Проверяем работу, присваиваем серийный номер и упаковываем." },
 ];
 
@@ -123,6 +123,25 @@ export default async function ShopHome() {
               </li>
             ))}
           </ol>
+          {/* Те же принтеры печатают и на заказ — на сайте Лаборатории 3Д. */}
+          <div className="flex flex-col items-start gap-5 border border-tl-accent p-5 sm:p-7 md:flex-row md:items-center md:justify-between">
+            <div className="flex max-w-[720px] flex-col gap-2">
+              <span className="tl-mono text-xs tracking-[0.14em] text-tl-accent">ПЕЧАТЬ НА ЗАКАЗ</span>
+              <strong className="tl-display text-[22px] font-semibold sm:text-[26px]">Нужно напечатать свою модель?</strong>
+              <span className="text-[15px] leading-relaxed text-tl-soft">
+                Изделия TACLAB мы производим на собственных принтерах. На них же печатаем и на заказ: загрузите свою
+                модель на сайте Лаборатории 3Д — цена посчитается сразу. Нет модели — опишите задачу, смоделируем сами.
+              </span>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:w-auto">
+              <a href={lab3dPath(base, "/order/upload")} className="tl-btn tl-btn-primary text-center">
+                Лаборатория 3Д →
+              </a>
+              <a href={lab3dPath(base, "/order/request")} className="tl-btn tl-btn-outline text-center">
+                Нет модели — заявка
+              </a>
+            </div>
+          </div>
         </div>
       </section>
     </>

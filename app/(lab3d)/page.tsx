@@ -44,6 +44,10 @@ export default async function HomePage() {
     getPickup(),
   ]);
 
+  // The shop is in this app: on its own domain when one is set (proxy.ts), else under /shop.
+  const shopDomain = (process.env.TACLAB_DOMAIN ?? "").split(",")[0].trim();
+  const shopHref = shopDomain ? `https://${shopDomain}` : "/shop";
+
   const steps = [
     { title: home.step1Title, text: home.step1Text },
     { title: home.step2Title, text: home.step2Text },
@@ -208,6 +212,22 @@ export default async function HomePage() {
             <Link href="/order/request" className="btn shrink-0 bg-[#0b120d] text-accent hover:opacity-90">
               {home.noModelCta}
             </Link>
+          </div>
+        </Reveal>
+      </section>
+
+      {/* The same workshop's own brand: finished products, in the shop (proxy.ts, app/(taclab)). */}
+      <section className="px-6 pb-20">
+        <Reveal>
+          <div className="mx-auto flex max-w-[1200px] flex-col items-start gap-6 rounded-[28px] border border-border bg-card p-8 md:flex-row md:items-center md:justify-between md:p-11">
+            <div className="max-w-[680px]">
+              <p className="font-mono text-xs tracking-[0.14em] text-accent">{home.taclabTag}</p>
+              <h2 className="mt-2 font-display text-[clamp(22px,2.8vw,32px)] font-semibold text-text">{home.taclabTitle}</h2>
+              <p className="mt-3 text-[17px] leading-relaxed text-muted">{home.taclabText}</p>
+            </div>
+            <a href={shopHref} className="btn btn-primary shrink-0">
+              {home.taclabCta} →
+            </a>
           </div>
         </Reveal>
       </section>

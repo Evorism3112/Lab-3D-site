@@ -8,6 +8,9 @@ import type { OrderDTO } from "@/lib/types";
 const LAB_API_URL = process.env.LAB_API_URL;
 const LAB_API_KEY = process.env.LAB_API_KEY;
 const REQUEST_TIMEOUT_MS = 5000;
+// A delivery quote is several CDEK / Ozon calls (city, its pickup points - a big list in Moscow -
+// then the tariff): 5 s cut it off, and the checkout showed no price at all.
+const DELIVERY_QUOTE_TIMEOUT_MS = 25_000;
 
 // Same fallback chain as app/api/checkout/session/route.ts — used to build an absolute,
 // publicly reachable link to the uploaded model so lab staff can download it directly.
@@ -18,13 +21,13 @@ function authHeaders(): Record<string, string> {
 }
 
 /** The parsed JSON reply, or null when lab is not configured, unreachable or answered with an error. */
-async function callLab(path: string, init: RequestInit): Promise<unknown> {
+async function callLab(path: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
   if (!LAB_API_URL) {
     console.error(`[labClient] LAB_API_URL is not configured, skipping ${path}`);
     return null;
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${LAB_API_URL}${path}`, {
       ...init,
@@ -154,9 +157,10 @@ export async function pushModelRequestToLab(request: {
 }
 
 export type DeliveryQuote = {
-  /** A pickup point picked for the address, or null when several match — see candidates. */
-  point: { id: string; label: string } | null;
-  candidates: { id: string; label: string }[];
+  /** A pickup point picked for the address (the nearest one when coordinates were given), or null
+   *  when several match — see candidates. label may carry the distance; address is the bare one. */
+  point: { id: string; label: string; address?: string } | null;
+  candidates: { id: string; label: string; address?: string }[];
   price: { total: number; period_min?: number | null; period_max?: number | null } | null;
 };
 
@@ -170,6 +174,9 @@ export async function quoteDeliveryFromLab(input: {
   address: string;
   point?: string;
   phone?: string;
+  /** The customer's address coordinates (from the address suggestions): the nearest pickup points. */
+  lat?: number;
+  lon?: number;
   weightG: number;
   goodsTotalRub: number;
 }): Promise<DeliveryQuote | null> {
@@ -180,11 +187,13 @@ export async function quoteDeliveryFromLab(input: {
       pvz_address: input.address,
       point: input.point,
       phone: input.phone,
+      lat: input.lat,
+      lon: input.lon,
       items: [],
       items_weight_g: input.weightG,
       goods_total: input.goodsTotalRub,
     }),
-  })) as (DeliveryQuote & { kind: string | null }) | null;
+  }, DELIVERY_QUOTE_TIMEOUT_MS)) as (DeliveryQuote & { kind: string | null }) | null;
   if (!result?.kind) return null;
   return { point: result.point, candidates: result.candidates ?? [], price: result.price };
 }

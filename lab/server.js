@@ -93,6 +93,7 @@ import { getStats } from './lib/stats.js';
 import { buildLabelPdf } from './lib/label.js';
 import * as ozon from './lib/ozon.js';
 import * as cdek from './lib/cdek.js';
+import { nearFrom } from './lib/address-match.js';
 import * as npd from './lib/npd.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -554,7 +555,7 @@ async function cdekRecipientPoint(order) {
   const found = await cdek.findPointsByAddress(order.pvz_address, 2);
   if (!found.length) throw new Error(`ПВЗ СДЭК по адресу «${order.pvz_address}» не найден — проверьте адрес или укажите код ПВЗ`);
   const [best, second] = found;
-  if (second && second.score >= best.score) {
+  if (best.relaxed || (second && second.score >= best.score)) {
     throw new Error('По адресу подходит несколько ПВЗ СДЭК — нажмите «Найти ПВЗ по адресу» и выберите нужный');
   }
   setOrderCdekPoint(order.id, best);
@@ -673,23 +674,43 @@ function parcelFor(items, boxIndex) {
 }
 
 // Подбор ПВЗ по адресу для черновика: если однозначно — выбранный, иначе — варианты на выбор.
-async function quotePoint(kind, address, chosen) {
+// near: координаты адреса клиента — тогда сразу берём ближайший пункт, остальные — на выбор.
+// chosen с near: пункт выбран, но список ближайших всё равно отдаём, чтобы клиент мог передумать.
+async function quotePoint(kind, address, chosen, near = null) {
+  const pick = (found) => {
+    const [best, second] = found;
+    if (best.nearest) return best;
+    return best.relaxed || (second && second.score >= best.score) ? null : best;
+  };
   if (kind === 'cdek') {
+    const found = !chosen || near ? await cdek.findPointsByAddress(address, 5, 'handout', near).catch((err) => {
+      if (chosen) return [];
+      throw err;
+    }) : [];
     if (chosen) {
       const info = await cdek.pointInfo(String(chosen));
       if (!info) throw new Error(`ПВЗ СДЭК с кодом ${chosen} не найден`);
-      return { point: info, candidates: [] };
+      const listed = found.find((p) => String(p.code) === String(chosen));
+      return { point: { ...info, distance_km: listed?.distance_km }, candidates: found };
     }
-    const found = await cdek.findPointsByAddress(address, 5);
     if (!found.length) throw new Error(`ПВЗ СДЭК по адресу «${address}» не найден — проверьте адрес`);
-    const [best, second] = found;
-    return { point: second && second.score >= best.score ? null : best, candidates: found };
+    return { point: pick(found), candidates: found };
   }
-  if (chosen) return { point: { delivery_point_id: Number(chosen) }, candidates: [] };
-  const found = await ozon.findDeliveryPointsByAddress(address, 5);
+  const found = !chosen || near ? await ozon.findDeliveryPointsByAddress(address, 5, near).catch((err) => {
+    if (chosen) return [];
+    throw err;
+  }) : [];
+  if (chosen) {
+    const listed = found.find((p) => String(p.delivery_point_id) === String(chosen));
+    return { point: listed || { delivery_point_id: Number(chosen) }, candidates: found };
+  }
   if (!found.length) throw new Error(`ПВЗ Ozon по адресу «${address}» не найден — проверьте адрес`);
-  const [best, second] = found;
-  return { point: best.relaxed || (second && second.score >= best.score) ? null : best, candidates: found };
+  return { point: pick(found), candidates: found };
+}
+
+// «ул. Ленина, 5 · 1.2 км» — расстояние, когда пункты подобраны по координатам клиента.
+function pointLabel(text, km) {
+  return km != null ? `${text} · ${String(km).replace('.', ',')} км` : text;
 }
 
 function carrierKind(service) {
@@ -719,15 +740,24 @@ async function quoteDelivery(data) {
     throw new Error('Для расчёта нужна коробка с габаритами и весом — добавьте её в Настройках → Каталог');
   }
   const draft = { goods_total: goodsTotal, ...parcel };
+  const near = nearFrom(data);
   if (kind === 'cdek') {
-    const { point, candidates } = await quotePoint('cdek', data.pvz_address, data.point);
-    result.candidates = candidates.map((c) => ({ id: String(c.code), label: c.full_address || c.name, type: c.type }));
+    const { point, candidates } = await quotePoint('cdek', data.pvz_address, data.point, near);
+    result.candidates = candidates.map((c) => ({
+      id: String(c.code), label: pointLabel(c.full_address || c.name, c.distance_km), type: c.type, address: c.full_address || c.name,
+    }));
     if (!point) return result;
-    result.point = { id: String(point.code), label: point.full_address || point.name || '', raw: point };
+    result.point = {
+      id: String(point.code), label: pointLabel(point.full_address || point.name || '', point.distance_km),
+      address: point.full_address || point.name || '', raw: point,
+    };
     result.price = await cdekPriceFor(draft, point);
   } else {
-    const { point, candidates } = await quotePoint('ozon', data.pvz_address, data.point);
-    result.candidates = candidates.map((c) => ({ id: String(c.delivery_point_id), label: c.full_address || c.name, type: c.type }));
+    const { point, candidates } = await quotePoint('ozon', data.pvz_address, data.point, near);
+    result.candidates = candidates.map((c) => ({
+      id: String(c.delivery_point_id), label: pointLabel(c.full_address || c.name, c.distance_km), type: c.type,
+      address: c.full_address || c.name,
+    }));
     if (!point) return result;
     const checkout = await ozon.orderCheckout({
       recipient: { phone_number: normalizePhone(data.phone) },
@@ -742,7 +772,9 @@ async function quoteDelivery(data) {
     });
     const first = checkout.results?.[0] || checkout;
     const cost = ozonCheckoutCost(first);
-    result.point = { id: String(point.delivery_point_id), label: point.full_address || '' };
+    result.point = {
+      id: String(point.delivery_point_id), label: pointLabel(point.full_address || '', point.distance_km), address: point.full_address || '',
+    };
     result.checkout = first;
     result.price = cost != null ? ozonDeliveryPriceFor(draft, cost) : null;
     if (!result.price) throw new Error('Ozon не вернул стоимость доставки');
@@ -1205,7 +1237,7 @@ const server = http.createServer(async (req, res) => {
         const result = await quoteDelivery(await readBody(req));
         return sendJson(res, 200, {
           kind: result.kind,
-          point: result.point ? { id: result.point.id, label: result.point.label } : null,
+          point: result.point ? { id: result.point.id, label: result.point.label, address: result.point.address } : null,
           candidates: result.candidates,
           price: result.price,
         });

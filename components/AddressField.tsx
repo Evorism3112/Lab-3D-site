@@ -67,7 +67,8 @@ export function AddressField({
   }, [value, level, contextKey, suggest]);
 
   const pick = (s: AddressSuggestion) => {
-    typed.current = false;
+    // A one-line address picked short of the house keeps suggesting while the house is typed on.
+    typed.current = level === "full" && !s.complete;
     setOpen(false);
     onSelect(s);
   };

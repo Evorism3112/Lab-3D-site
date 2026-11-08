@@ -95,3 +95,44 @@ export function rankByAddress(points, query, limit = 5, options = {}) {
   const strictResult = run(true);
   return strictResult.length || options.ignoreCity ? strictResult : run(false);
 }
+
+// --- Ближайшие пункты по координатам ---------------------------------------------------------
+// Сайт знает координаты адреса клиента (подсказки адреса) — пункт выдачи у него почти никогда не
+// на той же улице, поэтому вместо сравнения улиц берём ближайшие по расстоянию.
+
+export function distanceKm(a, b) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+// Координаты пункта из ответа службы (у СДЭК — location.latitude, у Ozon поля называются по-разному).
+export function pointCoords(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const sources = [raw, raw.location, raw.coordinates, raw.address, raw.location?.coordinates, raw.address?.coordinates];
+  for (const s of sources) {
+    if (!s || typeof s !== 'object') continue;
+    const lat = Number(s.latitude ?? s.lat);
+    const lon = Number(s.longitude ?? s.lon ?? s.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) return { lat, lon };
+  }
+  return null;
+}
+
+// Точка { lat, lon } из запроса или null.
+export function nearFrom(data) {
+  const lat = Number(data?.lat);
+  const lon = Number(data?.lon);
+  return data?.lat != null && data?.lon != null && Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+// points: [{ coords, ... }] → limit ближайших к near: [{ point, km }].
+export function nearestPoints(points, near, limit = 5) {
+  return points
+    .filter((p) => p.coords)
+    .map((point) => ({ point, km: distanceKm(near, point.coords) }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, limit);
+}

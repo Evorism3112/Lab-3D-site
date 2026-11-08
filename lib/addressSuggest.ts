@@ -1,4 +1,5 @@
-// Address suggestions for checkout: city → street → house, each narrowed to the previous choice.
+// Address suggestions for checkout: the whole address in one line ("full"), or city → street → house,
+// each narrowed to the previous choice.
 // DaData (DADATA_API_KEY, free up to 10k requests/day) knows Russian addresses best; without a key
 // the free Photon geocoder (OpenStreetMap) is used, so the dropdowns work out of the box.
 // Lookups only ever help — a failed or empty lookup leaves the field as plain text input.
@@ -7,7 +8,7 @@ const DADATA_API_KEY = process.env.DADATA_API_KEY;
 const TIMEOUT_MS = 4000;
 const LIMIT = 8;
 
-export type AddressLevel = "city" | "street" | "house";
+export type AddressLevel = "full" | "city" | "street" | "house";
 
 export type AddressSuggestion = {
   /** Bare name for the field: "Казань", "Ленина" / "улица Ленина", "5 к 2". */
@@ -25,6 +26,8 @@ export type AddressSuggestion = {
    *  to a customer living near the shop. */
   lat?: number;
   lon?: number;
+  /** "full" level: the address goes down to the house - otherwise the field keeps suggesting. */
+  complete?: boolean;
 };
 
 export type AddressContext = { cityId?: string; cityName?: string; bbox?: string; streetId?: string; streetName?: string };
@@ -47,7 +50,9 @@ type DadataSuggestion = { value: string; data: Record<string, string | null> };
 
 async function dadata(level: AddressLevel, q: string, ctx: AddressContext): Promise<AddressSuggestion[]> {
   const body: Record<string, unknown> = { query: q, count: LIMIT };
-  if (level === "city") {
+  if (level === "full") {
+    // No bounds: DaData suggests from the region down to the flat, like its own widget.
+  } else if (level === "city") {
     Object.assign(body, { from_bound: { value: "city" }, to_bound: { value: "settlement" } });
   } else if (level === "street") {
     const [kind, fias] = (ctx.cityId ?? "").split(":");
@@ -69,7 +74,9 @@ async function dadata(level: AddressLevel, q: string, ctx: AddressContext): Prom
     body: JSON.stringify(body),
   })) as { suggestions?: DadataSuggestion[] };
 
-  return (json.suggestions ?? []).flatMap(({ data: d }) => withCoords(dadataItems(level, d), d.geo_lat, d.geo_lon));
+  return (json.suggestions ?? []).flatMap(({ value, data: d }) =>
+    withCoords(level === "full" ? [{ value, withType: value, postal: d.postal_code ?? undefined, complete: Boolean(d.house) }] : dadataItems(level, d), d.geo_lat, d.geo_lon),
+  );
 }
 
 function withCoords(items: AddressSuggestion[], lat: unknown, lon: unknown): AddressSuggestion[] {
@@ -114,7 +121,9 @@ function photonUrl(params: Record<string, string>): string {
 
 async function photon(level: AddressLevel, q: string, ctx: AddressContext): Promise<AddressSuggestion[]> {
   const params: Record<string, string> =
-    level === "city"
+    level === "full"
+      ? { q }
+      : level === "city"
       ? { q, layer: "city" }
       : level === "street"
         ? { q, layer: "street", ...(ctx.bbox ? { bbox: ctx.bbox } : {}) }
@@ -129,7 +138,16 @@ async function photon(level: AddressLevel, q: string, ctx: AddressContext): Prom
     if (p.countrycode !== "RU") continue;
     const str = (key: string) => (typeof p[key] === "string" ? (p[key] as string) : "");
     let item: AddressSuggestion | null = null;
-    if (level === "city") {
+    if (level === "full") {
+      // Only addresses: shops, cafés and the like ("«Восток»") are not where a parcel goes.
+      if (!str("housenumber") && !["city", "town", "village", "locality", "district", "street"].includes(String(p.type))) continue;
+      // "Москва, улица Ленина, д. 5": a place, a street, or a house with its street.
+      const isPlace = !str("street") && !str("housenumber") && p.type !== "street";
+      const city = isPlace ? str("name") : str("city") || str("town") || str("village") || str("county");
+      const street = str("housenumber") ? str("street") : p.type === "street" ? str("name") : str("street");
+      const line = [city, street, str("housenumber") ? `д. ${str("housenumber")}` : ""].filter(Boolean).join(", ");
+      item = { value: line, withType: line, hint: str("state"), postal: str("postcode") || undefined, complete: Boolean(str("housenumber")) };
+    } else if (level === "city") {
       const [lon, lat] = geometry.coordinates;
       const e = Array.isArray(p.extent) ? p.extent : [lon - 0.15, lat + 0.15, lon + 0.15, lat - 0.15];
       item = { value: str("name"), withType: str("name"), hint: [str("county"), str("state")].filter(Boolean).join(", "), bbox: [e[0], e[3], e[2], e[1]].join(",") };

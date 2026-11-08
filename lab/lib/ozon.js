@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSetting } from '../db.js';
-import { addressQuery, addressWords, rankByAddress } from './address-match.js';
+import { addressQuery, addressWords, nearestPoints, pointCoords, rankByAddress } from './address-match.js';
 
 const AUTH_URL = 'https://xapi.ozon.ru/oauth/token';
 const API_BASE = 'https://api-delivery.ozon.ru';
@@ -401,7 +401,7 @@ const POINTS_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'
 function prepare(points, loadedAt) {
   const prepared = points.map((p) => {
     const address = pointAddressText(p);
-    return { raw: p, id: String(pointId(p)), address, words: addressWords(address) };
+    return { raw: p, id: String(pointId(p)), address, words: addressWords(address), coords: pointCoords(p) };
   });
   return { points: prepared, loadedAt, loading: null };
 }
@@ -444,9 +444,27 @@ async function getAllDeliveryPoints() {
   return pointsCache.loading;
 }
 
-export async function findDeliveryPointsByAddress(addressText, limit = 5) {
-  const query = addressQuery(addressText);
+// Ближайший пункт дальше этого — координаты, скорее всего, не того города: ищем по адресу.
+const NEAREST_MAX_KM = 50;
+
+// near: { lat, lon } адреса клиента (сайт) — ближайшие пункты (nearest: true), а не по совпадению улицы.
+export async function findDeliveryPointsByAddress(addressText, limit = 5, near = null) {
   const points = await getAllDeliveryPoints();
+  if (near) {
+    const nearest = nearestPoints(points, near, limit).filter(({ km }) => km <= NEAREST_MAX_KM);
+    if (nearest.length) {
+      return nearest.map(({ point: p, km }) => ({
+        delivery_point_id: p.id,
+        full_address: p.address,
+        name: p.raw.name || '',
+        type: p.raw.type || '',
+        score: 0,
+        distance_km: Math.round(km * 10) / 10,
+        nearest: true,
+      }));
+    }
+  }
+  const query = addressQuery(addressText);
   return rankByAddress(points, query, limit).map(({ point: p, score, relaxed }) => ({
     delivery_point_id: p.id,
     full_address: p.address,

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { suggestAddress, type AddressLevel } from "@/lib/addressSuggest";
 
-const LEVELS = new Set<AddressLevel>(["city", "street", "house"]);
+const LEVELS = new Set<AddressLevel>(["full", "city", "street", "house"]);
 
-// Checkout dropdowns: GET ?level=city|street|house&q=…, plus the previous choice
+// Checkout dropdowns: GET ?level=full|city|street|house&q=…, plus the previous choice
 // (cityId/cityName/bbox for streets, streetId/streetName for houses).
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;

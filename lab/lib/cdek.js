@@ -3,7 +3,7 @@
 // (Интеграция → API). Тестовый контур — api.edu.cdek.ru, боевой — api.cdek.ru.
 // Единицы: вес в граммах, габариты в сантиметрах, суммы в рублях.
 import { getSetting } from '../db.js';
-import { addressQuery, addressWords, rankByAddress } from './address-match.js';
+import { addressQuery, addressWords, nearestPoints, pointCoords, rankByAddress } from './address-match.js';
 
 const PROD_BASE = 'https://api.cdek.ru/v2';
 const TEST_BASE = 'https://api.edu.cdek.ru/v2';
@@ -141,19 +141,32 @@ export async function findCities(name) {
   ]);
   const byCode = new Map();
   for (const c of Array.isArray(exact) ? exact : []) {
-    byCode.set(c.code, { code: c.code, city: c.city, label: [c.city, c.sub_region, c.region].filter(Boolean).join(', ') });
+    byCode.set(c.code, {
+      code: c.code, city: c.city, label: [c.city, c.sub_region, c.region].filter(Boolean).join(', '), coords: pointCoords(c),
+    });
   }
   for (const c of Array.isArray(suggested) ? suggested : []) {
     const prev = byCode.get(c.code);
     const label = c.full_name || prev?.label || name;
-    byCode.set(c.code, { code: c.code, city: prev?.city || String(label).split(',')[0].trim(), label });
+    byCode.set(c.code, { code: c.code, city: prev?.city || String(label).split(',')[0].trim(), label, coords: prev?.coords || null });
   }
   return [...byCode.values()];
 }
 
+// Пункты города — большой ответ (в Москве тысячи), поэтому держим его в памяти: расчёт доставки на
+// сайте спрашивает тот же город при каждом изменении адреса.
+const POINTS_CACHE_MS = 30 * 60 * 1000;
+const pointsCache = new Map();
+
 export async function deliveryPoints(query) {
-  const list = await cdekRequest('GET', '/deliverypoints', { query });
-  return Array.isArray(list) ? list : [];
+  const key = JSON.stringify(query);
+  const hit = pointsCache.get(key);
+  if (hit && Date.now() - hit.at < POINTS_CACHE_MS) return hit.list;
+  const raw = await cdekRequest('GET', '/deliverypoints', { query });
+  const list = Array.isArray(raw) ? raw : [];
+  if (pointsCache.size > 200) pointsCache.clear();
+  pointsCache.set(key, { at: Date.now(), list });
+  return list;
 }
 
 function describePoint(p) {
@@ -165,12 +178,15 @@ function describePoint(p) {
     city_code: p.location?.city_code ?? null,
     city: p.location?.city || '',
     work_time: p.work_time || '',
+    coords: pointCoords(p.location),
   };
 }
 
 // ПВЗ СДЭК по адресу: город → код города СДЭК → пункты города → сравнение улицы и дома.
 // purpose: 'handout' — пункт выдачи (для получателя), 'reception' — приём посылок (для отправки).
-export async function findPointsByAddress(addressText, limit = 5, purpose = 'handout') {
+// near: { lat, lon } адреса (сайт берёт их из подсказок) — тогда ближайшие пункты (nearest: true).
+// Без координат и без пункта на той же улице — ближайшие к центру города (relaxed: сами не выбираем).
+export async function findPointsByAddress(addressText, limit = 5, purpose = 'handout', near = null) {
   const query = addressQuery(addressText);
   const L = globalThis.LabAddress;
   // Названия для поиска: населённые пункты от самого мелкого, затем поселения/СНТ из того же поля
@@ -200,22 +216,38 @@ export async function findPointsByAddress(addressText, limit = 5, purpose = 'han
   if (!cities.length) throw new Error(`СДЭК не знает населённый пункт «${names.join('» / «')}»`);
 
   const filter = purpose === 'reception' ? { is_reception: 'true' } : { is_handout: 'true' };
-  const perCity = await Promise.all(cities.map(async (city) => {
-    const points = (await deliveryPoints({ city_code: city.code, type: 'ALL', ...filter })).map((p) => {
+  const pointsByCity = await Promise.all(cities.map(async (city) => ({
+    city,
+    points: (await deliveryPoints({ city_code: city.code, type: 'ALL', ...filter })).map((p) => {
       const d = describePoint(p);
       return { ...d, words: addressWords(`${p.location?.address || ''} ${p.location?.address_full || ''}`) };
-    });
-    // Город уже отфильтрован запросом — сравниваем улицу и дом; точность выбора города — бонусом.
-    return rankByAddress(points, query, limit, { ignoreCity: true })
-      .map(({ point, score }) => ({ point, score: score + city.score }));
-  }));
-  return perCity.flat()
+    }),
+  })));
+  const clean = ({ words, ...rest }) => rest;
+
+  if (near) {
+    const nearest = nearestPoints(pointsByCity.flatMap((c) => c.points), near, limit);
+    if (nearest.length) {
+      return nearest.map(({ point, km }) => ({ ...clean(point), distance_km: Math.round(km * 10) / 10, nearest: true, score: 0 }));
+    }
+  }
+
+  // Город уже отфильтрован запросом — сравниваем улицу и дом; точность выбора города — бонусом.
+  const matched = pointsByCity
+    .flatMap(({ city, points }) => rankByAddress(points, query, limit, { ignoreCity: true })
+      .map(({ point, score }) => ({ point, score: score + city.score })))
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ point, score }) => {
-      const { words, ...rest } = point;
-      return { ...rest, score: Math.round(score * 10) / 10 };
-    });
+    .slice(0, limit);
+  if (matched.length) {
+    return matched.map(({ point, score }) => ({ ...clean(point), score: Math.round(score * 10) / 10 }));
+  }
+
+  // На этой улице пунктов нет — ближайшие к центру самого подходящего города, на выбор клиенту.
+  const best = pointsByCity[0];
+  const centre = best?.city.coords;
+  if (!centre) return [];
+  return nearestPoints(best.points, centre, limit)
+    .map(({ point, km }) => ({ ...clean(point), distance_km: Math.round(km * 10) / 10, relaxed: true, score: 0 }));
 }
 
 export async function pointInfo(code) {

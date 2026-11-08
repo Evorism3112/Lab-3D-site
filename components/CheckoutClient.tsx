@@ -6,7 +6,7 @@ import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
 
 import { AddressField } from "@/components/AddressField";
 import { addToPrintCart, clearPrintCart, MAX_LINE_QTY, removeFromPrintCart, setPrintCartQty, usePrintCart, type PrintCartLine } from "@/lib/cart";
-import { CHECKOUT_SERVICES, DELIVERY_SERVICES, formatAddressLine, PICKUP, type CheckoutService, type DeliveryService } from "@/lib/address";
+import { CHECKOUT_SERVICES, DELIVERY_SERVICES, PICKUP, type CheckoutService, type DeliveryService } from "@/lib/address";
 import type { AddressSuggestion } from "@/lib/addressSuggest";
 import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import type { DeliveryQuote } from "@/lib/labClient";
@@ -81,40 +81,36 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
     name: "",
     phone: "",
     service: DELIVERY_SERVICES[0] as CheckoutService,
-    extra: "",
   });
-  // Each address field keeps what is shown plus the suggestion it came from (if any): the
-  // suggestion's text with type goes to the CRM, and its id/bbox narrows the next field.
-  const [city, setCity] = useState<{ text: string; picked: AddressSuggestion | null }>({ text: "", picked: null });
-  const [street, setStreet] = useState<{ text: string; picked: AddressSuggestion | null }>({ text: "", picked: null });
-  const [house, setHouse] = useState<{ text: string; picked: AddressSuggestion | null }>({ text: "", picked: null });
+  // The address in one line, plus the suggestion it came from (if any): its coordinates find the
+  // nearest pickup point.
+  const [addr, setAddr] = useState<{ text: string; picked: AddressSuggestion | null }>({ text: "", picked: null });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Delivery estimate from the CRM calculator; the point is the customer's pick when several match.
   const [delivery, setDelivery] = useState<{ key: string; quote: DeliveryQuote | null } | null>(null);
   const [deliveryPoint, setDeliveryPoint] = useState<{ key: string; id: string } | null>(null);
 
-  const addressLine =
-    city.text.trim() && street.text.trim() && house.text.trim()
-      ? formatAddressLine({
-          city: city.picked?.withType ?? city.text,
-          street: street.picked?.withType ?? street.text,
-          house: house.picked?.withType ?? house.text,
-          extra: form.extra,
-        })
-      : "";
+  // At least "city, street…" - a city alone gives the CRM nothing to price.
+  const addressLine = addr.text.trim().replace(/[,\s]+$/, "");
+  const addressReady = addressLine.length >= 5 && (Boolean(addr.picked) || addressLine.includes(","));
   const phoneDigits = form.phone.replace(/\D/g, "").length;
   // Ozon prices a parcel for a recipient phone, so it waits for one.
   // The parcel weight (and declared value) for the delivery estimate; none while the slicer works.
   const parcel = lines.length > 0 && !anySlicing ? { weightG: gramsTotal, goodsRub: readyTotalCents / 100 } : null;
   const isPickup = form.service === PICKUP;
   // A customer living near the workshop is offered pickup (free) as soon as their address says so.
-  const nearKm = isPickup ? null : pickupDistanceKm(pickup, [house.picked, street.picked, city.picked]);
+  const nearKm = isPickup ? null : pickupDistanceKm(pickup, [addr.picked]);
+  // Where the picked address is: the CRM offers the pickup points nearest to it.
+  const geo = addr.picked?.lat !== undefined && addr.picked?.lon !== undefined ? addr.picked : undefined;
+  const isQuotedService = QUOTED_SERVICES.includes(form.service as DeliveryService);
   const canQuoteDelivery =
-    Boolean(parcel && addressLine) &&
+    Boolean(parcel && addressReady) &&
     QUOTED_SERVICES.includes(form.service as DeliveryService) &&
     (form.service !== "Озон" || phoneDigits >= 10);
-  const deliveryKey = canQuoteDelivery ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}` : "";
+  const deliveryKey = canQuoteDelivery
+    ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}|${geo ? `${geo.lat},${geo.lon}` : ""}`
+    : "";
   const pickedPoint = deliveryPoint?.key === deliveryKey ? deliveryPoint.id : undefined;
   const requestKey = `${deliveryKey}|${pickedPoint ?? ""}`;
   const currentDelivery = deliveryKey && delivery?.key === requestKey ? delivery.quote : null;
@@ -133,6 +129,8 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
           address: addressLine,
           point: pickedPoint,
           phone: form.phone || undefined,
+          lat: geo?.lat,
+          lon: geo?.lon,
           weightG: parcel.weightG,
           goodsTotalRub: parcel.goodsRub,
         }),
@@ -211,11 +209,8 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
             name: form.name,
             phone: form.phone,
             service: form.service,
-            city: city.picked?.withType ?? city.text,
-            street: street.picked?.withType ?? street.text,
-            house: house.picked?.withType ?? house.text,
-            extra: form.extra,
-            postal: house.picked?.postal,
+            address: isPickup ? "" : addressLine,
+            postal: addr.picked?.postal,
             deliveryPoint: currentDelivery?.price ? currentDelivery.point?.id : undefined,
           },
         }),
@@ -386,52 +381,13 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
         <>
 
         <AddressField
-          label={t.city}
-          level="city"
-          placeholder={t.cityPlaceholder}
-          value={city.text}
-          onChange={(text) => setCity({ text, picked: null })}
-          onSelect={(s) => {
-            setCity({ text: s.value, picked: s });
-            // A different city — the street and house typed for the old one no longer apply.
-            if (s.value !== city.picked?.value) {
-              setStreet({ text: "", picked: null });
-              setHouse({ text: "", picked: null });
-            }
-          }}
-        />
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4">
-          <AddressField
-            label={t.street}
-            level="street"
-            placeholder={t.streetPlaceholder}
-            value={street.text}
-            // Without a picked city the lookup would search the whole country — typing only.
-            suggest={Boolean(city.picked)}
-            context={{ cityId: city.picked?.id, cityName: city.picked?.value, bbox: city.picked?.bbox }}
-            onChange={(text) => setStreet({ text, picked: null })}
-            onSelect={(s) => {
-              setStreet({ text: s.withType, picked: s });
-              setHouse({ text: "", picked: null });
-            }}
-          />
-          <AddressField
-            label={t.house}
-            level="house"
-            placeholder="5"
-            value={house.text}
-            suggest={Boolean(street.picked)}
-            context={{ streetId: street.picked?.id, streetName: street.picked?.value, bbox: city.picked?.bbox }}
-            onChange={(text) => setHouse({ text, picked: null })}
-            onSelect={(s) => setHouse({ text: s.value, picked: s })}
-          />
-        </div>
-        <Field
-          label={t.extra}
-          placeholder={t.extraPlaceholder}
-          required={false}
-          value={form.extra}
-          onChange={(v) => setForm({ ...form, extra: v })}
+          label={t.address}
+          level="full"
+          placeholder={t.addressPlaceholder}
+          value={addr.text}
+          onChange={(text) => setAddr({ text, picked: null })}
+          // Short of the house: ", " so the customer types the house on and the list keeps going.
+          onSelect={(s) => setAddr({ text: s.complete ? s.value : `${s.value}, `, picked: s })}
         />
 
         {nearKm !== null && (
@@ -448,7 +404,15 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
         </>
         )}
 
+        {!isPickup && isQuotedService && !addressReady && <p className="text-sm text-muted">{t.deliveryNeedAddress}</p>}
+        {!isPickup && addressReady && form.service === "Озон" && phoneDigits < 10 && (
+          <p className="text-sm text-muted">{t.deliveryNeedPhone}</p>
+        )}
+        {!isPickup && form.service === "Почта России" && <p className="text-sm text-muted">{t.deliveryManual}</p>}
         {isQuotingDelivery && <p className="text-sm text-muted">{t.deliveryCalculating}</p>}
+        {!isQuotingDelivery && deliveryKey && !currentDelivery?.price && !currentDelivery?.candidates.length && (
+          <p className="text-sm text-muted">{t.deliveryFailed}</p>
+        )}
         {!isQuotingDelivery && currentDelivery && !currentDelivery.point && currentDelivery.candidates.length > 0 && (
           <div>
             <p className="text-sm text-text">{t.deliveryPickPoint}</p>
@@ -468,8 +432,28 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
         )}
         {!isQuotingDelivery && currentDelivery?.price && parcel && (
           <div className="card flex flex-col gap-1 p-4 text-sm">
-            {currentDelivery.point && <p className="text-xs text-muted">{currentDelivery.point.label}</p>}
-            <div className="flex items-baseline justify-between">
+            {currentDelivery.point && currentDelivery.candidates.length > 1 ? (
+              <label className="mb-1 flex flex-col gap-1">
+                <span className="text-xs text-muted">{t.deliveryPoint}</span>
+                <select
+                  value={currentDelivery.point.id}
+                  onChange={(e) => setDeliveryPoint({ key: deliveryKey, id: e.target.value })}
+                  className="w-full px-3 py-2 text-sm"
+                >
+                  {!currentDelivery.candidates.some((c) => c.id === currentDelivery.point!.id) && (
+                    <option value={currentDelivery.point.id}>{currentDelivery.point.label}</option>
+                  )}
+                  {currentDelivery.candidates.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              currentDelivery.point && <p className="text-xs text-muted">{currentDelivery.point.label}</p>
+            )}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <span className="text-muted">
                 {t.deliveryCost}
                 {currentDelivery.price.period_max
@@ -485,7 +469,7 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
             </div>
             {/* No total when the print price is still to be agreed. */}
             {!anyOnRequest && (
-              <div className="flex items-baseline justify-between">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                 <span className="text-muted">{t.deliveryTotal}</span>
                 <span className="font-bold text-text">
                   ≈ {formatAmount(readyTotalCents / 100 + currentDelivery.price.total, dict.locale)}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import type { Phone } from "@/lib/contacts";
-import { shopPath } from "@/lib/taclab/format";
+import { lab3dPath, shopPath } from "@/lib/taclab/format";
 
 export function ShopFooter({ base, contacts }: { base: string; contacts: { phones: Phone[]; vk: string } }) {
   return (
@@ -12,7 +12,7 @@ export function ShopFooter({ base, contacts }: { base: string; contacts: { phone
           <img src="/taclab/logo-white.svg" alt="TACLAB" className="h-[30px] w-auto self-start" />
           <span className="text-sm leading-relaxed text-tl-muted">
             Производство —{" "}
-            <a href="https://lab-3d.pro" className="border-b border-white/30 text-tl-text hover:border-white">
+            <a href={lab3dPath(base)} className="border-b border-white/30 text-tl-text hover:border-white">
               Лаборатория 3Д
             </a>
           </span>
@@ -23,6 +23,11 @@ export function ShopFooter({ base, contacts }: { base: string; contacts: { phone
             <Link href={`${shopPath(base)}#catalog`} className="hover:text-white">Каталог</Link>
             <Link href={shopPath(base, "/cart")} className="hover:text-white">Корзина</Link>
             <Link href={`${shopPath(base)}#info`} className="hover:text-white">Доставка и гарантия</Link>
+          </div>
+          <div className="flex flex-col">
+            <span className="tl-mono mb-1.5 text-xs text-tl-muted">ПЕЧАТЬ НА ЗАКАЗ</span>
+            <a href={lab3dPath(base, "/order/upload")} className="hover:text-white">Напечатать свою модель</a>
+            <a href={lab3dPath(base, "/order/request")} className="hover:text-white">Нет модели — смоделируем</a>
           </div>
           {(contacts.phones.length > 0 || contacts.vk) && (
             <div className="flex flex-col">

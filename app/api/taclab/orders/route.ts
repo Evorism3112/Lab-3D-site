@@ -97,7 +97,8 @@ export async function POST(request: NextRequest) {
       phone: data.phone,
       email: data.email || null,
       deliveryService: data.service,
-      address,
+      // The priced pickup point's own address, so the CRM finds that point (the customer's street rarely has one).
+      address: delivery?.price && delivery.point?.address ? delivery.point.address : address,
       deliveryPriceRub: isPickup ? 0 : delivery?.price ? Math.round(delivery.price.total) : null,
       goodsTotalRub: Math.round(goodsTotalRub),
       items,

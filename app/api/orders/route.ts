@@ -39,7 +39,9 @@ const CreateOrderSchema = z.object({
       .regex(/^[\d\s+()-]+$/)
       .refine((v) => v.replace(/\D/g, "").length >= 10),
     service: z.enum(CHECKOUT_SERVICES),
-    // Not needed for pickup; required for a carrier (checked below).
+    // Not needed for pickup; required for a carrier (checked below). The checkout sends the whole
+    // address in one line; city / street / house are the older form.
+    address: z.string().trim().max(400).default(""),
     city: z.string().trim().max(200).default(""),
     street: z.string().trim().max(200).default(""),
     house: z.string().trim().max(50).default(""),
@@ -48,7 +50,7 @@ const CreateOrderSchema = z.object({
     // The pickup point the checkout delivery estimate was calculated for (CRM point id).
     deliveryPoint: z.string().trim().max(50).optional(),
   })
-  .refine((s) => s.service === PICKUP || (s.city && s.street && s.house), { path: ["city"] }),
+  .refine((s) => s.service === PICKUP || s.address.length >= 5 || (s.city && s.street && s.house), { path: ["address"] }),
 });
 
 export async function POST(request: NextRequest) {
@@ -148,7 +150,7 @@ export async function POST(request: NextRequest) {
   if (isPickup && !pickup) {
     return NextResponse.json({ error: "Pickup is not available" }, { status: 400 });
   }
-  const addressLine = pickup ? pickup.address : formatAddressLine(shipping);
+  const addressLine = pickup ? pickup.address : shipping.address || formatAddressLine(shipping);
 
   // Recalculated here rather than taken from the browser, for the point the customer saw it for.
   const delivery = !isPickup && shipping.deliveryPoint
@@ -170,9 +172,11 @@ export async function POST(request: NextRequest) {
       shippingName: shipping.name,
       shippingPhone: shipping.phone,
       deliveryService: shipping.service,
-      // One line the CRM splits into city / street / house / extra (lib/address.ts).
-      shippingAddress: addressLine,
-      shippingCity: isPickup ? null : shipping.city,
+      // One line the CRM splits into city / street / house / extra (lib/address.ts). With a pickup
+      // point priced at checkout it is that point's address: the CRM finds the point by it, while the
+      // customer's own street rarely has one.
+      shippingAddress: delivery?.price && delivery.point?.address ? delivery.point.address : addressLine,
+      shippingCity: isPickup ? null : shipping.city || addressLine.split(",")[0].trim() || null,
       shippingPostal: shipping.postal || null,
       shippingCountry: "Россия",
       deliveryPriceRub: isPickup ? 0 : delivery?.price ? Math.round(delivery.price.total) : null,

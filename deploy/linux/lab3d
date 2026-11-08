@@ -503,11 +503,15 @@ git_pull() { # force?
 # Копия команды у root обновляется только когда update запускает человек, а не веб-панель
 # (её sudo идёт от lab3d - тогда файл из папки проекта не должен попадать к root).
 refresh_cli() {
-  [[ ${SUDO_USER:-} == "$APP_USER" ]] && { dim "Команда lab3d не обновлялась (запуск из веб-панели) - обновите вручную: sudo lab3d update"; return; }
   [[ -f $INSTALLED_CLI ]] || return 0
   local tmp; tmp=$(mktemp)
   sed "s#@LAB3D_ROOT@#$ROOT#" "$ROOT/deploy/linux/lab3d" > "$tmp"
-  if ! cmp -s "$tmp" "$INSTALLED_CLI"; then install -m 755 -o root -g root "$tmp" "$INSTALLED_CLI"; ok "Команда lab3d обновлена."; fi
+  if cmp -s "$tmp" "$INSTALLED_CLI"; then rm -f "$tmp"; return 0; fi
+  if [[ ${SUDO_USER:-} == "$APP_USER" ]]; then
+    warn "Вышла новая версия команды lab3d. Из веб-панели её поставить нельзя - выполните на сервере: sudo lab3d update"
+  else
+    install -m 755 -o root -g root "$tmp" "$INSTALLED_CLI"; ok "Команда lab3d обновлена."
+  fi
   rm -f "$tmp"
 }
 

@@ -58,7 +58,7 @@ const dictionaries = {
       tag: "3D Print On Demand",
       title: "Upload a model — get an exact price",
       subtitle:
-        "The slicer works out the print time and the plastic for your exact model, so you see the exact price right away, not a rough estimate. We ship via CDEK and Ozon across Russia.",
+        "The slicer instantly works out a preliminary price from the print time and plastic for your model. If we agree on higher precision, printing takes longer and the price goes up accordingly. We ship via CDEK and Ozon across Russia.",
       cta: "Get an instant quote",
       howTitle: "How it works",
       step1Title: "Upload the model",
@@ -490,7 +490,7 @@ const dictionaries = {
       tag: "3D-печать на заказ",
       title: "Загрузите модель — получите точную цену",
       subtitle:
-        "Слайсер рассчитывает время печати и расход пластика по вашей модели — вы сразу видите точную цену, а не предварительную оценку. Доставляем СДЭК и Ozon по всей России.",
+        "Слайсер сразу рассчитает предварительную стоимость по времени печати и расходу пластика для вашей модели. Если при согласовании понадобится более высокая точность, печать займёт больше времени и цена соответственно вырастет. Доставляем СДЭК и Ozon по всей России.",
       cta: "Рассчитать цену",
       howTitle: "Как это работает",
       step1Title: "Загрузите модель",

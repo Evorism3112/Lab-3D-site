@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { Reveal } from "@/components/Reveal";
 import { UploadDropzone } from "@/components/UploadDropzone";
-import { getFarmSummary } from "@/lib/bambuddy";
 import { listCatalogMaterials } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { localizeCatalogText } from "@/lib/i18n/catalog";
@@ -28,7 +27,7 @@ export default async function HomePage() {
   const { home } = dict;
 
   // Only what can be ordered right now (lib/colorSync.ts) — no out-of-stock plastics.
-  const [materials, showcaseItems, reviews, farm, pickup] = await Promise.all([
+  const [materials, showcaseItems, reviews, pickup] = await Promise.all([
     listCatalogMaterials(),
     prisma.showcaseItem.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -40,7 +39,6 @@ export default async function HomePage() {
       take: 6,
       select: { id: true, author: true, text: true, sourceUrl: true },
     }),
-    getFarmSummary(),
     getPickup(),
   ]);
 
@@ -65,12 +63,6 @@ export default async function HomePage() {
               {home.title}
             </h1>
             <p className="mt-5 max-w-[540px] text-lg leading-relaxed text-muted">{home.subtitle}</p>
-            {farm && farm.total > 0 && (
-              <p className="mt-7 inline-flex items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-text">
-                <span aria-hidden className="badge-dot h-2 w-2 rounded-full bg-accent shadow-[0_0_0_4px_var(--accent-soft)]" />
-                {formatTemplate(formatTemplate(home.farmBusy, farm.printing), farm.total)}
-              </p>
-            )}
           </Reveal>
 
           <Reveal delayMs={100}>
@@ -87,6 +79,26 @@ export default async function HomePage() {
               </div>
             </div>
           </Reveal>
+        </div>
+      </section>
+
+      {/* How it works — right under the upload zone. */}
+      <section className="px-6 pt-4 pb-16">
+        <div className="mx-auto max-w-[1200px]">
+          <Reveal>
+            <h2 className={`${h2} mb-7`}>{home.howTitle}</h2>
+          </Reveal>
+          <ol className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {steps.map((s, i) => (
+              <Reveal key={s.title} delayMs={i * 80}>
+                <li className="card flex h-full flex-col gap-3 p-6">
+                  <span className="font-display text-[34px] font-semibold text-accent">{String(i + 1).padStart(2, "0")}</span>
+                  <strong className="text-lg text-text">{s.title}</strong>
+                  <span className="text-[15px] leading-relaxed text-muted">{s.text}</span>
+                </li>
+              </Reveal>
+            ))}
+          </ol>
         </div>
       </section>
 
@@ -138,25 +150,6 @@ export default async function HomePage() {
           </div>
         </section>
       )}
-
-      <section className="px-6 py-20">
-        <div className="mx-auto max-w-[1200px]">
-          <Reveal>
-            <h2 className={`${h2} mb-7`}>{home.howTitle}</h2>
-          </Reveal>
-          <ol className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {steps.map((s, i) => (
-              <Reveal key={s.title} delayMs={i * 80}>
-                <li className="card flex h-full flex-col gap-3 p-6">
-                  <span className="font-display text-[34px] font-semibold text-accent">{String(i + 1).padStart(2, "0")}</span>
-                  <strong className="text-lg text-text">{s.title}</strong>
-                  <span className="text-[15px] leading-relaxed text-muted">{s.text}</span>
-                </li>
-              </Reveal>
-            ))}
-          </ol>
-        </div>
-      </section>
 
       {materials.length > 0 && (
         <section className="px-6 pt-6 pb-20">

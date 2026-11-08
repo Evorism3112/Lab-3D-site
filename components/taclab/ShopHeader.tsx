@@ -20,7 +20,6 @@ export function ShopHeader({ base }: { base: string }) {
           className="order-last flex w-full justify-between whitespace-nowrap text-sm font-medium tracking-[0.02em] text-tl-soft sm:justify-start sm:gap-x-7 md:order-none md:w-auto"
         >
           <Link href={`${shopPath(base)}#catalog`} className="py-2 hover:text-white">Каталог</Link>
-          <Link href={`${shopPath(base)}#how`} className="py-2 hover:text-white">Производство</Link>
           <Link href={`${shopPath(base)}#info`} className="py-2 hover:text-white">
             Доставка<span className="hidden sm:inline"> и гарантия</span>
           </Link>

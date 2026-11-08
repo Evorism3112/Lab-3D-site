@@ -58,8 +58,7 @@ const dictionaries = {
       tag: "3D Print On Demand",
       title: "Upload a model — get an exact price",
       subtitle:
-        "The slicer works out the print time and the plastic for your exact model, so the price is calculated, not guessed. We ship via CDEK and Ozon across Russia.",
-      farmBusy: "Printers busy now: %d of %d",
+        "The slicer works out the print time and the plastic for your exact model, so you see the exact price right away, not a rough estimate. We ship via CDEK and Ozon across Russia.",
       cta: "Get an instant quote",
       howTitle: "How it works",
       step1Title: "Upload the model",
@@ -247,7 +246,7 @@ const dictionaries = {
         },
         {
           q: "How do I pay?",
-          a: "After you place the order we check the model and get in touch to confirm the details and arrange payment. Printing starts after payment.",
+          a: "After you place the order we check the model and get in touch to confirm the details and arrange payment.",
         },
         {
           q: "How is the order delivered?",
@@ -491,8 +490,7 @@ const dictionaries = {
       tag: "3D-печать на заказ",
       title: "Загрузите модель — получите точную цену",
       subtitle:
-        "Слайсер посчитает время печати и расход пластика именно по вашей модели — цена рассчитана, а не «на глаз». Доставляем СДЭК и Ozon по всей России.",
-      farmBusy: "Принтеров в работе: %d из %d",
+        "Слайсер рассчитывает время печати и расход пластика по вашей модели — вы сразу видите точную цену, а не предварительную оценку. Доставляем СДЭК и Ozon по всей России.",
       cta: "Рассчитать цену",
       howTitle: "Как это работает",
       step1Title: "Загрузите модель",
@@ -680,7 +678,7 @@ const dictionaries = {
         },
         {
           q: "Как оплатить?",
-          a: "После оформления мы проверяем модель и связываемся с вами, чтобы подтвердить детали и договориться об оплате. Печатаем после оплаты.",
+          a: "После оформления мы проверяем модель и связываемся с вами, чтобы подтвердить детали и договориться об оплате.",
         },
         {
           q: "Как доставляете?",

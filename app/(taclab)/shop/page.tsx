@@ -14,12 +14,6 @@ const FEATURES = [
   { title: "Сделано в России", text: "Своя разработка и своё производство — от модели до упаковки." },
 ];
 
-const STEPS = [
-  { title: "Проектирование", text: "Модель, прототипы, испытания. Каждая доработка — новая ревизия: R01, R02, R03…" },
-  { title: "Печать и сборка", text: "Печатаем на собственной ферме принтеров Лаборатории 3Д и собираем вручную." },
-  { title: "Проверка и S/N", text: "Проверяем работу, присваиваем серийный номер и упаковываем." },
-];
-
 export default async function ShopHome() {
   const [base, { products, crmReachable }] = await Promise.all([getShopBase(), getShopCatalog()]);
   const hero = products.find((p) => p.photos.length > 0) ?? products[0];
@@ -48,9 +42,6 @@ export default async function ShopHome() {
             <div className="flex flex-wrap gap-3 [&>*]:flex-[1_1_auto] sm:[&>*]:flex-none">
               <Link href={`${shopPath(base)}#catalog`} className="tl-btn tl-btn-primary">
                 Каталог →
-              </Link>
-              <Link href={`${shopPath(base)}#how`} className="tl-btn tl-btn-outline">
-                Как мы делаем
               </Link>
             </div>
           </div>
@@ -107,23 +98,9 @@ export default async function ShopHome() {
         )}
       </section>
 
-      {/* Как мы делаем */}
-      <section id="how" aria-labelledby="how-title" className="border-y border-tl-line bg-tl-panel">
-        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 px-4 py-14 sm:px-8 md:gap-10 md:py-24">
-          <div className="flex flex-col gap-2.5">
-            <span className="tl-mono text-[13px] tracking-[0.14em] text-tl-accent">ПРОИЗВОДСТВО</span>
-            <h2 id="how-title" className="tl-display text-4xl font-bold leading-none sm:text-5xl">Как мы делаем</h2>
-          </div>
-          <ol className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-4 sm:gap-5">
-            {STEPS.map((s, i) => (
-              <li key={s.title} className="flex flex-col gap-3 border border-tl-line p-5 sm:p-7">
-                <span className="tl-mono text-xs text-tl-muted">ЭТАП {String(i + 1).padStart(2, "0")}</span>
-                <strong className="tl-display text-[22px] font-semibold sm:text-[26px]">{s.title}</strong>
-                <span className="text-[15px] leading-relaxed text-tl-soft">{s.text}</span>
-              </li>
-            ))}
-          </ol>
-          {/* Те же принтеры печатают и на заказ — на сайте Лаборатории 3Д. */}
+      {/* Те же принтеры печатают и на заказ — на сайте Лаборатории 3Д. */}
+      <section aria-label="Печать на заказ" className="border-y border-tl-line bg-tl-panel">
+        <div className="mx-auto max-w-[1240px] px-4 py-14 sm:px-8 md:py-24">
           <div className="flex flex-col items-start gap-5 border border-tl-accent p-5 sm:p-7 md:flex-row md:items-center md:justify-between">
             <div className="flex max-w-[720px] flex-col gap-2">
               <span className="tl-mono text-xs tracking-[0.14em] text-tl-accent">ПЕЧАТЬ НА ЗАКАЗ</span>

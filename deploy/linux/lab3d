@@ -506,8 +506,12 @@ git_pull() { # force?
 FROM_PANEL=0
 refresh_cli() {
   [[ -f $INSTALLED_CLI ]] || return 0
-  local tmp; tmp=$(mktemp)
-  sed "s#@LAB3D_ROOT@#$ROOT#" "$ROOT/deploy/linux/lab3d" > "$tmp"
+  # Метка собрана из частей: установка заменяет каждое вхождение полной метки, и здесь в копии
+  # оказался бы уже путь - тогда новая копия ставилась бы без пути (и искала проект в /usr).
+  local tmp mark='@LAB3D''_ROOT@'; tmp=$(mktemp)
+  sed "s#$mark#$ROOT#" "$ROOT/deploy/linux/lab3d" > "$tmp"
+  # Подстраховка: копия без пути к проекту не встаёт.
+  grep -q "^ROOT=\"$ROOT\"$" "$tmp" || { rm -f "$tmp"; warn "Команда lab3d не обновлена: не удалось вписать путь к проекту."; return 0; }
   if cmp -s "$tmp" "$INSTALLED_CLI"; then rm -f "$tmp"; return 0; fi
   if [[ $FROM_PANEL == 1 ]]; then
     warn "Вышла новая версия команды lab3d. Из веб-панели её поставить нельзя - выполните на сервере: sudo lab3d update"

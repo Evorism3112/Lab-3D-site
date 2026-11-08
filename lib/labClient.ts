@@ -67,6 +67,8 @@ function toLabPayload(order: OrderDTO) {
     // city / street / house / extra by itself.
     delivery_service: order.shipping.deliveryService,
     pvz_address: order.shipping.address,
+    // The point priced at checkout: the CRM order gets it (and the products' standard box) ready to ship.
+    delivery_point_id: order.shipping.deliveryPointId ?? undefined,
     shipping_address: formatShippingAddress(order.shipping),
     // The estimate shown at checkout; staff confirm the exact amount with the customer.
     delivery_price: order.shipping.deliveryPrice ?? undefined,
@@ -229,6 +231,7 @@ export async function pushTaclabOrderToLab(order: {
   email: string | null;
   deliveryService: string;
   address: string;
+  deliveryPointId: string | null;
   deliveryPriceRub: number | null;
   comment: string | null;
   items: { crmName: string; modelId: string | null; color: string; connector: string; quantity: number; priceRub: number }[];
@@ -243,6 +246,7 @@ export async function pushTaclabOrderToLab(order: {
       delivery_service: order.deliveryService,
       pvz_address: order.address,
       shipping_address: order.address,
+      delivery_point_id: order.deliveryPointId ?? undefined,
       delivery_price: order.deliveryPriceRub ?? undefined,
       payment_status: "unpaid",
       notes: ["Заказ с сайта TACLAB.", order.comment ? `Комментарий: ${order.comment}` : ""].filter(Boolean).join("\n"),

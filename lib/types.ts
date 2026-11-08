@@ -92,6 +92,8 @@ export type OrderDTO = {
     phone: string | null;
     /** Carrier as the CRM names it ("СДЭК", "Озон"). */
     deliveryService: string | null;
+    /** The pickup point priced at checkout (CDEK code / Ozon id); null when none was. */
+    deliveryPointId: string | null;
     /** Full delivery address line: city, street, house, extra (lib/address.ts). */
     address: string | null;
     city: string | null;

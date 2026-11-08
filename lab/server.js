@@ -719,6 +719,32 @@ function parcelFor(items, boxIndex, boxItems = items) {
   };
 }
 
+// Заказ с сайта: посылка по стандартной коробке товаров и ПВЗ, выбранный на сайте
+// (data.delivery_point_id — код ПВЗ СДЭК или delivery_point_id Ozon, как в расчёте доставки).
+async function fillExternalShipment(order, data) {
+  const parcel = parcelFor(order.items || [], null);
+  const hasBox = parcel.box_from_product && parcel.length_mm && parcel.width_mm && parcel.height_mm;
+  const pointId = String(data.delivery_point_id || '').trim();
+  const kind = pointId ? carrierKind(data.delivery_service) : null;
+  if (hasBox || kind === 'ozon') {
+    setOrderOzonParams(order.id, {
+      weight_g: hasBox ? parcel.weight_g || null : order.weight_g,
+      length_mm: hasBox ? parcel.length_mm : order.length_mm,
+      width_mm: hasBox ? parcel.width_mm : order.width_mm,
+      height_mm: hasBox ? parcel.height_mm : order.height_mm,
+      ozon_delivery_point_id: kind === 'ozon' ? pointId : order.ozon_delivery_point_id || '',
+    });
+  }
+  if (kind === 'cdek') {
+    // Полные данные пункта (город, тип) — из СДЭК; не ответил — хватит кода, остальное подтянется при отправке.
+    const info = await cdek.pointInfo(pointId).catch(() => null);
+    setOrderCdekPoint(order.id, info
+      ? { code: String(info.code), full_address: info.full_address || '', city_code: info.city_code ?? null, type: info.type || '', name: info.name || '' }
+      : { code: pointId });
+    if (!info) patchOrderCdekShipment(order.id, { point: null });
+  }
+}
+
 // Подбор ПВЗ по адресу для черновика: если однозначно — выбранный, иначе — варианты на выбор.
 // near: координаты адреса клиента — тогда сразу берём ближайший пункт, остальные — на выбор.
 // chosen с near: пункт выбран, но список ближайших всё равно отдаём, чтобы клиент мог передумать.
@@ -1249,18 +1275,10 @@ const server = http.createServer(async (req, res) => {
       if (!data.external_order_id) return sendJson(res, 400, { error: 'external_order_id обязателен' });
       const isNew = !findOrderByExternalId(data.external_order_id);
       let order = createOrUpdateExternalOrder(data);
-      // Новый заказ с сайта: сразу кладём посылку (стандартная коробка товаров + вес), чтобы при
-      // отправке не выбирать коробку руками.
-      if (isNew && order?.id) {
-        const parcel = parcelFor(order.items || [], null);
-        if (parcel.box_from_product && parcel.length_mm && parcel.width_mm && parcel.height_mm) {
-          order = setOrderOzonParams(order.id, {
-            weight_g: parcel.weight_g || null, length_mm: parcel.length_mm, width_mm: parcel.width_mm,
-            height_mm: parcel.height_mm, ozon_delivery_point_id: order.ozon_delivery_point_id || '',
-          }) || order;
-        }
-      }
-      return sendJson(res, 201, order);
+      // Новый заказ с сайта: сразу кладём посылку (стандартная коробка товаров + вес) и ПВЗ,
+      // выбранный покупателем, чтобы при отправке ничего не выбирать руками.
+      if (isNew && order?.id) await fillExternalShipment(order, data);
+      return sendJson(res, 201, getOrder(order.id) || order);
     }
 
     // Каталог изделий для магазина TACLAB (сайт, магазин): модели, цвета, разъёмы и товары с ценой

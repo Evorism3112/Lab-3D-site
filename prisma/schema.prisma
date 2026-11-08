@@ -190,8 +190,10 @@ model Order {
   shippingPostal  String?
   shippingCountry String?
   shippingPhone   String?
-  // Carrier as the CRM names it: "СДЭК", "Озон", "Почта России".
+  // Carrier as the CRM names it: "СДЭК", "Озон".
   deliveryService String?
+  // The pickup point priced at checkout (CDEK point code / Ozon delivery_point_id): the CRM order gets it.
+  deliveryPointId String?
   // Delivery estimate from the CRM calculator at checkout, rubles; staff confirm the exact amount.
   deliveryPriceRub Int?
   email           String?
@@ -299,6 +301,8 @@ model TaclabOrder {
   deliveryService  String
   // One line the CRM splits into city / street / house / extra (lib/address.ts).
   address          String
+  // The pickup point priced at checkout (CDEK point code / Ozon delivery_point_id): the CRM order gets it.
+  deliveryPointId  String?
   deliveryPriceRub Int?
   goodsTotalRub    Int
   // [{ crmName, modelId, color, connector, quantity, priceRub }]

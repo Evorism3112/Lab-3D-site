@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
       shippingName: shipping.name,
       shippingPhone: shipping.phone,
       deliveryService: shipping.service,
+      deliveryPointId: delivery?.price && delivery.point?.id ? delivery.point.id : null,
       // One line the CRM splits into city / street / house / extra (lib/address.ts). With a pickup
       // point priced at checkout it is that point's address: the CRM finds the point by it, while the
       // customer's own street rarely has one.

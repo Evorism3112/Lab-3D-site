@@ -206,7 +206,6 @@ const dictionaries = {
       deliveryNeedAddress: "Enter your address — city, street and house — and we'll find the nearest pickup point and calculate delivery.",
       deliveryNeedPhone: "Ozon calculates delivery for the recipient's phone — enter it above.",
       deliveryFailed: "Couldn't calculate delivery for this address. Check it, pick it from the suggestions or choose another carrier — or just place the order and we'll calculate it for you.",
-      deliveryManual: "Russian Post delivery is calculated by hand — we'll tell you the amount when we get in touch.",
     },
     thankYou: {
       title: "Order received",
@@ -252,7 +251,7 @@ const dictionaries = {
         },
         {
           q: "How is the order delivered?",
-          a: "Via CDEK, Ozon or Russian Post to the pickup point you choose. The delivery cost is calculated at checkout.",
+          a: "Via CDEK or Ozon to the pickup point you choose. The delivery cost is calculated at checkout.",
         },
         {
           q: "What if the model can't be printed as is?",
@@ -640,7 +639,6 @@ const dictionaries = {
       deliveryNeedAddress: "Укажите адрес — город, улицу и дом — подберём ближайший пункт выдачи и посчитаем доставку.",
       deliveryNeedPhone: "Ozon считает доставку по телефону получателя — укажите его выше.",
       deliveryFailed: "Не получилось рассчитать доставку по этому адресу. Проверьте его, выберите из подсказок или другую службу — или просто оформите заказ, посчитаем сами.",
-      deliveryManual: "Доставку Почтой России считаем вручную — сообщим сумму, когда свяжемся по заказу.",
     },
     thankYou: {
       title: "Заказ принят",
@@ -686,7 +684,7 @@ const dictionaries = {
         },
         {
           q: "Как доставляете?",
-          a: "СДЭК, Ozon или Почтой России в выбранный вами пункт выдачи. Стоимость доставки считается при оформлении заказа.",
+          a: "СДЭК или Ozon в выбранный вами пункт выдачи. Стоимость доставки считается при оформлении заказа.",
         },
         {
           q: "Что если модель не получится напечатать как есть?",

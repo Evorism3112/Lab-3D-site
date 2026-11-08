@@ -14,7 +14,7 @@ import { formatAmount, formatCents } from "@/lib/money";
 import { pickupDistanceKm, roundKm, type PickupInfo } from "@/lib/pickupNear";
 import type { QuoteDTO } from "@/lib/types";
 
-// Carriers the CRM can price (lab quoteDelivery); Russian Post is priced by hand.
+// Carriers the CRM can price (lab quoteDelivery).
 const QUOTED_SERVICES: DeliveryService[] = ["СДЭК", "Озон"];
 const DELIVERY_QUOTE_DELAY_MS = 800;
 const CART_QUOTE_DELAY_MS = 400;
@@ -408,7 +408,6 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
         {!isPickup && addressReady && form.service === "Озон" && phoneDigits < 10 && (
           <p className="text-sm text-muted">{t.deliveryNeedPhone}</p>
         )}
-        {!isPickup && form.service === "Почта России" && <p className="text-sm text-muted">{t.deliveryManual}</p>}
         {isQuotingDelivery && <p className="text-sm text-muted">{t.deliveryCalculating}</p>}
         {!isQuotingDelivery && deliveryKey && !currentDelivery?.price && !currentDelivery?.candidates.length && (
           <p className="text-sm text-muted">{t.deliveryFailed}</p>

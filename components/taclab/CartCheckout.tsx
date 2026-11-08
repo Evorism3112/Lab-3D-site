@@ -15,7 +15,7 @@ import { savedCity } from "@/lib/taclab/city";
 import { rub, shopPath } from "@/lib/taclab/format";
 import type { ShopColor, ShopConnector } from "@/lib/taclab/product";
 
-// Carriers the CRM can price (lab quoteDelivery); Russian Post is priced by hand.
+// Carriers the CRM can price (lab quoteDelivery).
 const QUOTED_SERVICES: DeliveryService[] = ["СДЭК", "Озон"];
 const DELIVERY_QUOTE_DELAY_MS = 800;
 
@@ -319,9 +319,6 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
         )}
         {!isPickup && addressReady && form.service === "Озон" && phoneDigits < 10 && (
           <p className="text-sm text-tl-muted">Ozon считает доставку по телефону получателя — укажите его выше.</p>
-        )}
-        {!isPickup && form.service === "Почта России" && (
-          <p className="text-sm text-tl-muted">Доставку Почтой России считаем вручную — сообщим сумму, когда свяжемся.</p>
         )}
         {quoting && <p className="text-sm text-tl-muted">Считаем доставку…</p>}
         {!quoting && deliveryKey && !currentDelivery?.price && !currentDelivery?.candidates.length && (

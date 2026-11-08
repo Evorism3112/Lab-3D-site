@@ -2,8 +2,8 @@
 // string ("pvz_address") and splits it into city / street / house / extra itself (lab/public/address.js),
 // which understands both "г Казань, ул Ленина, д 5, ПВЗ №12" and "Казань, Ленина, д. 5".
 
-/** Carriers exactly as the CRM names them (lab db.js DELIVERY_SERVICES). */
-export const DELIVERY_SERVICES = ["СДЭК", "Озон", "Почта России"] as const;
+/** Carriers offered at checkout, exactly as the CRM names them (lab db.js DELIVERY_SERVICES). */
+export const DELIVERY_SERVICES = ["СДЭК", "Озон"] as const;
 export type DeliveryService = (typeof DELIVERY_SERVICES)[number];
 
 /** Pickup from the workshop (when it is on, lib/settings.ts getPickup) - also as the CRM names it. */

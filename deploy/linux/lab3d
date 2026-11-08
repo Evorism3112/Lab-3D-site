@@ -500,14 +500,16 @@ git_pull() { # force?
   as_user_in "$ROOT" git -c safe.directory='*' reset --hard '@{u}'
 }
 
-# Копия команды у root обновляется только когда update запускает человек, а не веб-панель
-# (её sudo идёт от lab3d - тогда файл из папки проекта не должен попадать к root).
+# Копия команды у root обновляется только когда update запускает человек, а не веб-панель:
+# панель пишет в папку проекта, и её файл не должен попадать к root. Признак ставит
+# только cmd_panel_action (переменная из окружения сюда не доходит - задаётся ниже).
+FROM_PANEL=0
 refresh_cli() {
   [[ -f $INSTALLED_CLI ]] || return 0
   local tmp; tmp=$(mktemp)
   sed "s#@LAB3D_ROOT@#$ROOT#" "$ROOT/deploy/linux/lab3d" > "$tmp"
   if cmp -s "$tmp" "$INSTALLED_CLI"; then rm -f "$tmp"; return 0; fi
-  if [[ ${SUDO_USER:-} == "$APP_USER" ]]; then
+  if [[ $FROM_PANEL == 1 ]]; then
     warn "Вышла новая версия команды lab3d. Из веб-панели её поставить нельзя - выполните на сервере: sudo lab3d update"
   else
     install -m 755 -o root -g root "$tmp" "$INSTALLED_CLI"; ok "Команда lab3d обновлена."
@@ -684,7 +686,7 @@ cmd_panel_action() {
   [[ $EUID -eq 0 ]] || die "Только через sudo."
   case ${1:-} in
     site-restart) systemctl restart lab3d-site; slicer_installed && systemctl restart lab3d-slicer; systemctl reload caddy; ok "Сайт перезапущен." ;;
-    site-update) cmd_update ;;
+    site-update) FROM_PANEL=1; cmd_update ;;
     crm-start|crm-stop|crm-restart) systemctl "${1#crm-}" lab3d-crm; ok "«Заказы»: ${1#crm-}" ;;
     bambuddy-start|bambuddy-stop|bambuddy-restart) systemctl "${1#bambuddy-}" bambuddy; ok "Bambuddy: ${1#bambuddy-}" ;;
     *) die "Неизвестное действие: ${1:-}" ;;

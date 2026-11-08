@@ -650,24 +650,30 @@ async function cdekPriceFor(order, point) {
 // Посылка: коробка из Настроек → Каталог (по умолчанию первая) + вес товаров по каталогу.
 // Сколько товаров в одной посылке: коробка растёт до этого числа (сайт больше не пропускает).
 const MAX_ITEMS_PER_PARCEL = 10;
-// Стандартная коробка товара рассчитана на 1 шт. На несколько штук товары кладутся сеткой:
-// до N шт — длина ×a, ширина ×b, высота та же (2–4 шт — 2×2, 5–8 — 4×2, 9–10 — 5×2).
+// Стандартная коробка товара рассчитана на 1 шт. На несколько штук товары кладутся сеткой a×b:
+// до N шт — 2–4 шт: 2×2, 5–8: 4×2, 9–10: 5×2. Самая длинная сторона (вдоль товара) не меняется,
+// в какое бы поле её ни вписали (75×75×270 и 270×75×75 — одна коробка); растут две другие, причём
+// больший множитель достаётся меньшей из них — так коробка выходит компактнее.
 const BOX_GRID = [[1, 1, 1], [4, 2, 2], [8, 4, 2], [MAX_ITEMS_PER_PARCEL, 5, 2]];
 
 function scaledBox(box, qty) {
   const [, a, b] = BOX_GRID.find(([n]) => qty <= n) || BOX_GRID[BOX_GRID.length - 1];
-  const l = Number(box.length_mm) || 0;
-  const w = Number(box.width_mm) || 0;
-  const h = Number(box.height_mm) || 0;
-  const area = (x, y, z) => 2 * (x * y + x * z + y * z);
+  const keys = ['length_mm', 'width_mm', 'height_mm'];
+  const dims = keys.map((k) => Number(box[k]) || 0);
+  const longest = dims.indexOf(Math.max(...dims));
+  const [small, big] = [0, 1, 2].filter((i) => i !== longest).sort((x, y) => dims[x] - dims[y]);
+  const next = [...dims];
+  next[small] *= a;
+  next[big] *= b;
+  const area = ([x, y, z]) => 2 * (x * y + x * z + y * z);
   // Картон тяжелеет вместе с площадью коробки.
-  const k = area(l, w, h) > 0 ? area(l * a, w * b, h) / area(l, w, h) : 1;
+  const k = area(dims) > 0 ? area(next) / area(dims) : 1;
   return {
     name: a * b > 1 ? `${box.name} (на ${qty} шт)` : box.name,
     weight_g: Math.round((Number(box.weight_g) || 0) * k),
-    length_mm: l * a,
-    width_mm: w * b,
-    height_mm: h,
+    length_mm: next[0],
+    width_mm: next[1],
+    height_mm: next[2],
   };
 }
 

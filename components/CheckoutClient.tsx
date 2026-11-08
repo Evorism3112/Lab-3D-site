@@ -11,6 +11,7 @@ import type { AddressSuggestion } from "@/lib/addressSuggest";
 import { formatTemplate, type Dictionary } from "@/lib/i18n/translations";
 import type { DeliveryQuote } from "@/lib/labClient";
 import { formatAmount, formatCents } from "@/lib/money";
+import { formatPhoneInput } from "@/lib/phone";
 import { pickupDistanceKm, roundKm, type PickupInfo } from "@/lib/pickupNear";
 import type { QuoteDTO } from "@/lib/types";
 
@@ -349,7 +350,7 @@ function CheckoutForm({ dict, pickup }: { dict: Dictionary; pickup: PickupInfo |
           placeholder="+7 900 000-00-00"
           pattern="[\d\s+()\-]{10,}"
           value={form.phone}
-          onChange={(v) => setForm({ ...form, phone: v })}
+          onChange={(v) => setForm({ ...form, phone: formatPhoneInput(v) })}
         />
 
         <div>

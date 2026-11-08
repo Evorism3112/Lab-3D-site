@@ -11,6 +11,7 @@ import type { AddressSuggestion } from "@/lib/addressSuggest";
 import type { DeliveryQuote } from "@/lib/labClient";
 import { pickupDistanceKm, roundKm, type PickupInfo } from "@/lib/pickupNear";
 import { cartQty, clearCart, setQty, useCart, type CartLine } from "@/lib/taclab/cart";
+import { formatPhoneInput } from "@/lib/phone";
 import { MAX_ORDER_QTY } from "@/lib/taclab/limits";
 import { savedCity } from "@/lib/taclab/city";
 import { rub, shopPath } from "@/lib/taclab/format";
@@ -264,7 +265,7 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
       <form onSubmit={submit} className="flex w-full min-w-0 flex-[1_1_380px] flex-col gap-4 rounded-[2px] border border-tl-line bg-tl-panel p-4 sm:p-6">
         <h2 className="tl-display text-2xl font-bold">Оформление</h2>
         <Field label="Имя и фамилия" value={form.name} onChange={(v) => setForm({ ...form, name: v })} autoComplete="name" />
-        <Field label="Телефон" type="tel" value={form.phone} placeholder="+7 900 000-00-00" onChange={(v) => setForm({ ...form, phone: v })} autoComplete="tel" />
+        <Field label="Телефон" type="tel" value={form.phone} placeholder="+7 900 000-00-00" onChange={(v) => setForm({ ...form, phone: formatPhoneInput(v) })} autoComplete="tel" />
         <Field label="Email (необязательно)" type="email" required={false} value={form.email} onChange={(v) => setForm({ ...form, email: v })} autoComplete="email" />
 
         <fieldset>

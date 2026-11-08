@@ -399,7 +399,9 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
 
         {error && <p className="text-sm text-tl-danger">{error}</p>}
         <button type="submit" disabled={submitting || lines.length === 0} className="tl-btn tl-btn-primary w-full">
-          {submitting ? "Отправляем…" : `Оформить заказ · ${rub(goodsTotal)}`}
+          {submitting
+            ? "Отправляем…"
+            : `Оформить заказ · ${!isPickup && currentDelivery?.price ? `≈ ${rub(goodsTotal + currentDelivery.price.total)}` : rub(goodsTotal)}`}
         </button>
         <p className="text-xs leading-relaxed text-tl-muted">
           После оформления мы свяжемся с вами, подтвердим заказ и договоримся об оплате. Стоимость доставки — предварительная.

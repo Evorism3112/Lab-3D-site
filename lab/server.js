@@ -377,6 +377,8 @@ function cleanProductTemplates(list) {
       model_id: MODELS.some((m) => m.id === t?.model_id) ? t.model_id : '',
       price: Math.max(0, Math.round((Number(t?.price) || 0) * 100) / 100),
       weight_g: Math.max(0, Math.round(Number(t?.weight_g) || 0)),
+      // Стандартная коробка на 1 шт — название из Настроек → Каталог → Коробки (см. parcelFor).
+      box: String(t?.box || '').trim().slice(0, 120),
       // Состав для учёта на складе: компонент × количество на 1 шт; цвет/разъём — строка только для такого варианта.
       // Имена файлов из data/uploads/products, первое — главное фото.
       photos: (Array.isArray(t?.photos) ? t.photos : [])
@@ -646,11 +648,54 @@ async function cdekPriceFor(order, point) {
 
 // ---- Расчёт доставки для нового заказа (ещё не сохранённого) ----
 // Посылка: коробка из Настроек → Каталог (по умолчанию первая) + вес товаров по каталогу.
-function parcelFor(items, boxIndex) {
+// Сколько товаров в одной посылке: коробка растёт до этого числа (сайт больше не пропускает).
+const MAX_ITEMS_PER_PARCEL = 10;
+// Стандартная коробка товара рассчитана на 1 шт. На несколько штук товары кладутся сеткой:
+// до N шт — длина ×a, ширина ×b, высота та же (2–4 шт — 2×2, 5–8 — 4×2, 9–10 — 5×2).
+const BOX_GRID = [[1, 1, 1], [4, 2, 2], [8, 4, 2], [MAX_ITEMS_PER_PARCEL, 5, 2]];
+
+function scaledBox(box, qty) {
+  const [, a, b] = BOX_GRID.find(([n]) => qty <= n) || BOX_GRID[BOX_GRID.length - 1];
+  const l = Number(box.length_mm) || 0;
+  const w = Number(box.width_mm) || 0;
+  const h = Number(box.height_mm) || 0;
+  const area = (x, y, z) => 2 * (x * y + x * z + y * z);
+  // Картон тяжелеет вместе с площадью коробки.
+  const k = area(l, w, h) > 0 ? area(l * a, w * b, h) / area(l, w, h) : 1;
+  return {
+    name: a * b > 1 ? `${box.name} (на ${qty} шт)` : box.name,
+    weight_g: Math.round((Number(box.weight_g) || 0) * k),
+    length_mm: l * a,
+    width_mm: w * b,
+    height_mm: h,
+  };
+}
+
+// Посылка: коробка + вес товаров по Каталогу.
+// boxIndex — коробка, выбранная вручную (как есть). Иначе — стандартная коробка товара, увеличенная
+// под общее количество штук; у товаров её нет — первая коробка из Каталога, как раньше.
+// boxItems — товары для подбора коробки, когда их вес передан отдельно (сайт: items пустой).
+function parcelFor(items, boxIndex, boxItems = items) {
   const boxes = readBoxTemplates();
-  const index = Number.isInteger(boxIndex) && boxes[boxIndex] ? boxIndex : boxes.length ? 0 : -1;
-  const box = boxes[index] || null;
   const products = readProductTemplates();
+  let index = Number.isInteger(boxIndex) && boxes[boxIndex] ? boxIndex : -1;
+  let box = boxes[index] || null;
+  let fromProduct = false;
+  if (!box) {
+    const lines = (Array.isArray(boxItems) ? boxItems : [])
+      .map((it) => ({ product: products.find((p) => p.name === it?.product_name), qty: Number(it?.quantity) || 0 }))
+      .filter((l) => l.product && l.qty > 0);
+    const boxName = lines.find((l) => l.product.box)?.product.box;
+    const own = boxName ? boxes.findIndex((b) => b.name === boxName) : -1;
+    if (own >= 0) {
+      index = own;
+      fromProduct = true;
+      box = scaledBox(boxes[own], Math.max(1, lines.reduce((sum, l) => sum + l.qty, 0)));
+    } else if (boxes.length) {
+      index = 0;
+      box = boxes[0];
+    }
+  }
   let itemsWeight = 0;
   const missing = [];
   for (const it of items) {
@@ -663,6 +708,7 @@ function parcelFor(items, boxIndex) {
   return {
     box_index: index,
     box_name: box?.name || '',
+    box_from_product: fromProduct,
     box_weight_g: box ? Number(box.weight_g) || 0 : 0,
     items_weight_g: itemsWeight,
     missing_weight: missing,
@@ -726,7 +772,8 @@ function carrierKind(service) {
 async function quoteDelivery(data) {
   const items = Array.isArray(data.items) ? data.items : [];
   const kind = carrierKind(data.delivery_service);
-  const parcel = parcelFor(items, data.box_index == null || data.box_index === '' ? null : Number(data.box_index));
+  const boxIndex = data.box_index == null || data.box_index === '' ? null : Number(data.box_index);
+  const parcel = parcelFor(items, boxIndex, items.length ? items : data.box_items);
   const extraWeight = Math.max(0, Math.round(Number(data.items_weight_g) || 0));
   parcel.items_weight_g += extraWeight;
   parcel.weight_g += extraWeight;
@@ -1146,7 +1193,14 @@ const server = http.createServer(async (req, res) => {
       // Из формы «Новый заказ» сразу приходят посылка, ПВЗ и расчёт доставки — кладём их в заказ,
       // чтобы в карточке заказа всё было заполнено.
       const d = data.delivery;
-      if (d && typeof d === 'object') {
+      const auto = parcelFor(order.items || [], null);
+      if ((!d || typeof d !== 'object' || !d.parcel?.length_mm) && auto.box_from_product) {
+        // Доставку не считали — всё равно кладём стандартную коробку товаров.
+        setOrderOzonParams(order.id, {
+          weight_g: auto.weight_g || null, length_mm: auto.length_mm, width_mm: auto.width_mm, height_mm: auto.height_mm,
+          ozon_delivery_point_id: '',
+        });
+      } else if (d && typeof d === 'object') {
         const parcel = d.parcel || {};
         setOrderOzonParams(order.id, {
           weight_g: parcel.weight_g || null,
@@ -1193,7 +1247,20 @@ const server = http.createServer(async (req, res) => {
       if (!checkExternalAuth(req)) return sendJson(res, 401, { error: 'Неверный API-ключ' });
       const data = await readBody(req);
       if (!data.external_order_id) return sendJson(res, 400, { error: 'external_order_id обязателен' });
-      return sendJson(res, 201, createOrUpdateExternalOrder(data));
+      const isNew = !findOrderByExternalId(data.external_order_id);
+      let order = createOrUpdateExternalOrder(data);
+      // Новый заказ с сайта: сразу кладём посылку (стандартная коробка товаров + вес), чтобы при
+      // отправке не выбирать коробку руками.
+      if (isNew && order?.id) {
+        const parcel = parcelFor(order.items || [], null);
+        if (parcel.box_from_product && parcel.length_mm && parcel.width_mm && parcel.height_mm) {
+          order = setOrderOzonParams(order.id, {
+            weight_g: parcel.weight_g || null, length_mm: parcel.length_mm, width_mm: parcel.width_mm,
+            height_mm: parcel.height_mm, ozon_delivery_point_id: order.ozon_delivery_point_id || '',
+          }) || order;
+        }
+      }
+      return sendJson(res, 201, order);
     }
 
     // Каталог изделий для магазина TACLAB (сайт, магазин): модели, цвета, разъёмы и товары с ценой

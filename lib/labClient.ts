@@ -179,6 +179,8 @@ export async function quoteDeliveryFromLab(input: {
   lon?: number;
   weightG: number;
   goodsTotalRub: number;
+  /** Shop products by CRM name: the CRM takes their standard box and sizes it for the count. */
+  items?: { name: string; qty: number }[];
 }): Promise<DeliveryQuote | null> {
   const result = (await callLab("/api/external/delivery/quote", {
     method: "POST",
@@ -190,6 +192,7 @@ export async function quoteDeliveryFromLab(input: {
       lat: input.lat,
       lon: input.lon,
       items: [],
+      box_items: (input.items ?? []).map((i) => ({ product_name: i.name, quantity: i.qty })),
       items_weight_g: input.weightG,
       goods_total: input.goodsTotalRub,
     }),

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { quoteDeliveryFromLab } from "@/lib/labClient";
+import { MAX_ORDER_QTY } from "@/lib/taclab/limits";
 import { isRateLimited } from "@/lib/rateLimit";
 import { getShopCatalog } from "@/lib/taclab/catalog";
 
 const EstimateSchema = z.object({
   slug: z.string().max(100),
-  qty: z.number().int().min(1).max(99),
+  qty: z.number().int().min(1).max(MAX_ORDER_QTY),
   // As it goes into an address line: "г Екатеринбург".
   city: z.string().trim().min(2).max(120),
 });
@@ -20,8 +21,8 @@ const CACHE_MS = 30 * 60 * 1000;
 const cache = new Map<string, { at: number; value: Estimate | null }>();
 type Estimate = { totalRub: number; deliveryRub: number; daysMin: number | null; daysMax: number | null };
 
-async function estimate(city: string, weightG: number, goodsTotalRub: number): Promise<Estimate | null> {
-  const base = { service: "СДЭК", address: city, weightG, goodsTotalRub };
+async function estimate(city: string, weightG: number, goodsTotalRub: number, items: { name: string; qty: number }[]): Promise<Estimate | null> {
+  const base = { service: "СДЭК", address: city, weightG, goodsTotalRub, items };
   let quote = await quoteDeliveryFromLab(base);
   if (quote && !quote.price && quote.candidates.length > 0) {
     quote = await quoteDeliveryFromLab({ ...base, point: quote.candidates[0].id });
@@ -50,10 +51,10 @@ export async function POST(request: NextRequest) {
   const weightG = product.weightG * qty;
   const goodsTotalRub = product.priceRub * qty;
 
-  const key = `${city.toLowerCase()}|${weightG}|${goodsTotalRub}`;
+  const key = `${city.toLowerCase()}|${product.crmName}|${qty}|${weightG}|${goodsTotalRub}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return NextResponse.json({ estimate: hit.value });
-  const value = await estimate(city, weightG, goodsTotalRub);
+  const value = await estimate(city, weightG, goodsTotalRub, [{ name: product.crmName, qty }]);
   if (cache.size > 2000) cache.clear();
   cache.set(key, { at: Date.now(), value });
   return NextResponse.json({ estimate: value });

@@ -436,7 +436,6 @@ async function runQuote({ force = false } = {}) {
     if (seq !== quoteSeq) return; // пришёл устаревший ответ
     quote = { ...res, key: JSON.stringify(input) };
     renderParcel(res.parcel);
-    if (res.parcel.box_index >= 0 && boxSelectEl.value === '') boxSelectEl.value = String(res.parcel.box_index);
     if (!res.kind) {
       pointBox.innerHTML = '';
       result.innerHTML = '<span class="muted">Для этой службы сумму доставки введите вручную.</span>';
@@ -498,7 +497,8 @@ deliveryInput.addEventListener('input', () => { manualPrice = true; });
 function fillBoxes() {
   const boxes = catalog.boxes || [];
   boxSelectEl.innerHTML = boxes.length
-    ? boxes.map((b, i) => `<option value="${i}">${escapeHtml(b.name)} — ${b.length_mm}×${b.width_mm}×${b.height_mm} мм</option>`).join('')
+    ? '<option value="">Авто — коробка товара под количество</option>'
+      + boxes.map((b, i) => `<option value="${i}">${escapeHtml(b.name)} — ${b.length_mm}×${b.width_mm}×${b.height_mm} мм</option>`).join('')
     : '<option value="">— добавьте коробки в Настройках → Каталог —</option>';
 }
 

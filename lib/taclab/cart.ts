@@ -2,10 +2,15 @@
 
 import { useSyncExternalStore } from "react";
 
+import { MAX_ORDER_QTY } from "@/lib/taclab/limits";
+
 // The shop cart lives in the visitor's browser (localStorage) until checkout; prices are never
 // stored here - the order API takes them from the CRM catalog.
 
 export type CartLine = { slug: string; crmName: string; color: string; connector: string; qty: number };
+
+
+export const cartQty = (lines: CartLine[]) => lines.reduce((sum, l) => sum + l.qty, 0);
 
 const KEY = "taclab-cart-v1";
 const EVENT = "taclab-cart";
@@ -60,18 +65,24 @@ export function useCart(): CartLine[] {
 const same = (a: CartLine, b: Omit<CartLine, "qty">) =>
   a.slug === b.slug && a.color === b.color && a.connector === b.connector;
 
-export function addToCart(line: CartLine) {
+/** How many more pieces of this line fit in the order (MAX_ORDER_QTY over the whole cart). */
+const room = (lines: CartLine[], line: Omit<CartLine, "qty">) =>
+  MAX_ORDER_QTY - cartQty(lines.filter((l) => !same(l, line)));
+
+/** Adds up to what still fits in the order; false when nothing more fits. */
+export function addToCart(line: CartLine): boolean {
   const lines = read();
   const existing = lines.find((l) => same(l, line));
-  write(
-    existing
-      ? lines.map((l) => (l === existing ? { ...l, qty: Math.min(99, l.qty + line.qty) } : l))
-      : [...lines, line],
-  );
+  const qty = Math.min(room(lines, line), (existing?.qty ?? 0) + line.qty);
+  if (qty <= (existing?.qty ?? 0)) return false;
+  write(existing ? lines.map((l) => (l === existing ? { ...l, qty } : l)) : [...lines, { ...line, qty }]);
+  return true;
 }
 
 export function setQty(line: CartLine, qty: number) {
-  write(read().flatMap((l) => (same(l, line) ? (qty > 0 ? [{ ...l, qty: Math.min(99, qty) }] : []) : [l])));
+  const lines = read();
+  const capped = Math.min(room(lines, line), qty);
+  write(lines.flatMap((l) => (same(l, line) ? (capped > 0 ? [{ ...l, qty: capped }] : []) : [l])));
 }
 
 export function clearCart() {

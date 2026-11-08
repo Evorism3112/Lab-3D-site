@@ -10,7 +10,8 @@ import { CHECKOUT_SERVICES, DELIVERY_SERVICES, PICKUP, type CheckoutService, typ
 import type { AddressSuggestion } from "@/lib/addressSuggest";
 import type { DeliveryQuote } from "@/lib/labClient";
 import { pickupDistanceKm, roundKm, type PickupInfo } from "@/lib/pickupNear";
-import { clearCart, setQty, useCart, type CartLine } from "@/lib/taclab/cart";
+import { cartQty, clearCart, setQty, useCart, type CartLine } from "@/lib/taclab/cart";
+import { MAX_ORDER_QTY } from "@/lib/taclab/limits";
 import { savedCity } from "@/lib/taclab/city";
 import { rub, shopPath } from "@/lib/taclab/format";
 import type { ShopColor, ShopConnector } from "@/lib/taclab/product";
@@ -101,6 +102,10 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
   const missing = catalog ? cart.length - lines.length : 0;
   const goodsTotal = lines.reduce((sum, { line, p }) => sum + p.priceRub * line.qty, 0);
   const weightG = lines.reduce((sum, { line, p }) => sum + p.weightG * line.qty, 0);
+  // The CRM picks the products' standard box and sizes it for the count.
+  const boxItems = lines.map(({ line, p }) => ({ name: p.crmName, qty: line.qty }));
+  const boxKey = boxItems.map((i) => `${i.name}×${i.qty}`).join(",");
+  const atLimit = cartQty(cart) >= MAX_ORDER_QTY;
 
   // At least "city, street…" - a city alone gives the CRM nothing to price.
   const addressLine = addr.text.trim().replace(/[,\s]+$/, "");
@@ -119,7 +124,7 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
     QUOTED_SERVICES.includes(form.service as DeliveryService) &&
     (form.service !== "Озон" || phoneDigits >= 10);
   const deliveryKey = canQuote
-    ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}|${weightG}|${goodsTotal}|${geo ? `${geo.lat},${geo.lon}` : ""}`
+    ? `${form.service}|${addressLine}|${form.service === "Озон" ? form.phone : ""}|${weightG}|${goodsTotal}|${boxKey}|${geo ? `${geo.lat},${geo.lon}` : ""}`
     : "";
   const pickedPoint = deliveryPoint?.key === deliveryKey ? deliveryPoint.id : undefined;
   const requestKey = `${deliveryKey}|${pickedPoint ?? ""}`;
@@ -143,6 +148,7 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
           lon: geo?.lon,
           weightG,
           goodsTotalRub: goodsTotal,
+          items: boxItems,
         }),
       })
         .then((res) => (res.ok ? res.json() : { quote: null }))
@@ -230,7 +236,7 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
                       −
                     </button>
                     <span className="tl-mono min-w-8 text-center text-sm">{line.qty}</span>
-                    <button type="button" onClick={() => setQty(line, line.qty + 1)} aria-label="Больше" className="h-full w-11 cursor-pointer text-lg">
+                    <button type="button" onClick={() => setQty(line, line.qty + 1)} disabled={atLimit} aria-label="Больше" className="h-full w-11 cursor-pointer text-lg disabled:cursor-not-allowed disabled:opacity-40">
                       +
                     </button>
                   </div>
@@ -243,6 +249,9 @@ export function CartCheckout({ base, pickup }: { base: string; pickup: PickupInf
             </li>
           ))}
         </ul>
+        {atLimit && (
+          <p className="pt-3 text-sm text-tl-muted">В одном заказе — до {MAX_ORDER_QTY} шт. Нужно больше — оформите ещё один заказ или напишите нам.</p>
+        )}
         {lines.length > 0 && (
           <div className="flex items-baseline justify-between gap-4 pt-5">
             <span className="tl-mono text-xs tracking-[0.08em] text-tl-muted">ТОВАРЫ</span>

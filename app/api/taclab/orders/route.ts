@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { pushTaclabOrderToLab, quoteDeliveryFromLab } from "@/lib/labClient";
 import { isRateLimited } from "@/lib/rateLimit";
 import { getPickup } from "@/lib/settings";
+import { MAX_ORDER_QTY } from "@/lib/taclab/limits";
 import { getShopCatalog } from "@/lib/taclab/catalog";
 
 const OrderSchema = z.object({
@@ -15,7 +16,7 @@ const OrderSchema = z.object({
         slug: z.string().max(100),
         color: z.string().max(2),
         connector: z.string().max(2),
-        qty: z.number().int().min(1).max(99),
+        qty: z.number().int().min(1).max(MAX_ORDER_QTY),
       }),
     )
     .min(1)
@@ -46,6 +47,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Проверьте имя, телефон и адрес." }, { status: 400 });
   }
   const data = parsed.data;
+  // One box per order (lab parcelFor).
+  if (data.items.reduce((sum, i) => sum + i.qty, 0) > MAX_ORDER_QTY) {
+    return NextResponse.json({ error: `В одном заказе — до ${MAX_ORDER_QTY} шт. Уменьшите количество в корзине.` }, { status: 400 });
+  }
   // Pickup: the workshop's address, free; only while pickup is switched on.
   const isPickup = data.service === PICKUP;
   const pickup = isPickup ? await getPickup() : null;
@@ -88,6 +93,7 @@ export async function POST(request: NextRequest) {
         phone: data.phone,
         weightG,
         goodsTotalRub,
+        items: items.map((i) => ({ name: i.crmName, qty: i.quantity })),
       })
     : null;
 

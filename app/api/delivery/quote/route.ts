@@ -16,6 +16,8 @@ const DeliveryQuoteSchema = z.object({
   // From the item quote the customer already sees (/api/quote): plastic grams and the price.
   weightG: z.number().min(0).max(100_000),
   goodsTotalRub: z.number().min(0).max(10_000_000),
+  // Shop products (their CRM names): the CRM sizes their standard box for the count.
+  items: z.array(z.object({ name: z.string().trim().min(1).max(120), qty: z.number().int().min(1).max(10) })).max(30).optional(),
 });
 
 // Checkout delivery estimate — a proxy to the CRM calculator (lib/labClient.ts).

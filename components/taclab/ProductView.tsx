@@ -7,6 +7,7 @@ import { Brackets } from "@/components/taclab/Brackets";
 import { DeliveryEstimate } from "@/components/taclab/DeliveryEstimate";
 import { PhotoOrMark } from "@/components/taclab/PhotoOrMark";
 import { addToCart } from "@/lib/taclab/cart";
+import { MAX_ORDER_QTY } from "@/lib/taclab/limits";
 import { rub, shopPath } from "@/lib/taclab/format";
 import { serialPrefix, stockLabel, type ShopProduct } from "@/lib/taclab/product";
 
@@ -18,6 +19,8 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
   const [connector, setConnector] = useState(p.connectors[0]?.letter ?? "");
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+  // The cart already holds MAX_ORDER_QTY pieces (one box per order).
+  const [cartFull, setCartFull] = useState(false);
   const tabs: { id: Tab; name: string; show: boolean }[] = [
     { id: "specs", name: "Характеристики", show: p.specs.length > 0 },
     { id: "compat", name: "Совместимость", show: Boolean(p.compatibility) },
@@ -145,7 +148,7 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
                 −
               </button>
               <span className="tl-mono min-w-9 text-center" aria-live="polite">{qty}</span>
-              <button type="button" onClick={() => { setQty(Math.min(99, qty + 1)); changed(); }} aria-label="Больше" className="h-full w-12 cursor-pointer text-[22px]">
+              <button type="button" onClick={() => { setQty(Math.min(MAX_ORDER_QTY, qty + 1)); changed(); }} aria-label="Больше" className="h-full w-12 cursor-pointer text-[22px]">
                 +
               </button>
             </div>
@@ -157,7 +160,7 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
               <button
                 type="button"
                 onClick={() => {
-                  addToCart({ slug: p.slug, crmName: p.crmName, color, connector, qty });
+                  setCartFull(!addToCart({ slug: p.slug, crmName: p.crmName, color, connector, qty }));
                   setAdded(true);
                 }}
                 className="tl-btn tl-btn-primary h-14 flex-[1_1_200px]"
@@ -166,6 +169,9 @@ export function ProductView({ product: p, base }: { product: ShopProduct; base: 
               </button>
             )}
           </div>
+          {added && cartFull && (
+            <p className="text-sm text-tl-muted">В одном заказе — до {MAX_ORDER_QTY} шт, корзина уже заполнена.</p>
+          )}
 
           <ul className="flex flex-col gap-3 border-t border-tl-line pt-5 text-sm text-tl-soft">
             <li>СДЭК и Ozon до пункта выдачи — стоимость видна при оформлении</li>

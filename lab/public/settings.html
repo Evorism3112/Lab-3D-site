@@ -50,6 +50,7 @@
           <th>Модель</th>
           <th>Цена, ₽</th>
           <th>Вес 1 шт, г</th>
+          <th title="Коробка на 1 шт. На несколько штук она увеличивается сама: 2–4 шт — длина и ширина ×2, 5–8 — длина ×4 и ширина ×2, 9–10 — длина ×5 и ширина ×2.">Коробка</th>
           <th>Состав</th>
           <th>Фото</th>
           <th style="width:50px"></th>
@@ -500,6 +501,7 @@ document.getElementById('box-save').addEventListener('click', async () => {
     await api('/api/catalog/boxes', { method: 'PUT', body: JSON.stringify({ templates }) });
     toast('Коробки сохранены', 'success');
     loadBoxes();
+    loadProducts().catch((err) => toast(err.message, 'error'));
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -690,6 +692,7 @@ function addProductRow(t = {}) {
       <td><select data-k="model_id">${modelOptions}</select></td>
       <td><input data-k="price" type="number" min="0" step="0.01"></td>
       <td><input data-k="weight_g" type="number" min="0" step="1"></td>
+      <td><select data-k="box">${boxOptions(t.box)}</select></td>
       <td><button type="button" class="secondary small comp-btn" style="white-space:nowrap"></button></td>
       <td><button type="button" class="secondary small photo-btn" style="white-space:nowrap"></button></td>
       <td><button type="button" class="secondary small remove-item" title="Удалить">✕</button></td>
@@ -708,8 +711,18 @@ function addProductRow(t = {}) {
   productBody.appendChild(row);
 }
 
+// Коробки из таблицы выше (по названию); коробка, которой уже нет, остаётся видна, пока её не сменят.
+let productBoxNames = [];
+function boxOptions(current = '') {
+  const names = current && !productBoxNames.includes(current) ? [...productBoxNames, current] : productBoxNames;
+  return ['<option value="">—</option>', ...names.map((n) => `<option value="${escapeText(n)}">${escapeText(n)}</option>`)].join('');
+}
+
 async function loadProducts() {
-  const [{ templates, components }, cat] = await Promise.all([api('/api/catalog/products'), api('/api/catalog')]);
+  const [{ templates, components }, cat, boxes] = await Promise.all([
+    api('/api/catalog/products'), api('/api/catalog'), api('/api/catalog/boxes'),
+  ]);
+  productBoxNames = (boxes.templates || []).map((b) => b.name);
   catalogModels = cat.models || [];
   catalogColors = cat.colors || [];
   catalogConnectors = cat.connectors || [];
